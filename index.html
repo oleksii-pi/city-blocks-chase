@@ -1,0 +1,1416 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>City Blocks Chase</title>
+  <link rel="icon" href="data:,">
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #1f2a26;
+      color: #f6f0df;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      touch-action: none;
+      background: #6f8c5a;
+    }
+
+    .hud {
+      position: fixed;
+      top: max(12px, env(safe-area-inset-top));
+      left: max(12px, env(safe-area-inset-left));
+      display: grid;
+      gap: 4px;
+      min-width: 170px;
+      padding: 9px 11px;
+      border: 1px solid rgba(255, 244, 210, 0.22);
+      border-radius: 8px;
+      background: rgba(24, 28, 25, 0.78);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+      backdrop-filter: blur(5px);
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .hud strong {
+      color: #fff6d7;
+      font-size: 13px;
+      letter-spacing: 0;
+    }
+
+    .hud span {
+      color: #e8ddbf;
+      font-size: 12px;
+      line-height: 1.25;
+      white-space: nowrap;
+    }
+
+    .message {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      display: none;
+      min-width: 210px;
+      padding: 16px 24px;
+      border: 1px solid rgba(255, 244, 210, 0.22);
+      border-radius: 8px;
+      background: rgba(21, 24, 22, 0.9);
+      color: #fff6d7;
+      font-size: 22px;
+      font-weight: 800;
+      text-align: center;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    .controls {
+      position: fixed;
+      right: max(14px, env(safe-area-inset-right));
+      bottom: max(14px, env(safe-area-inset-bottom));
+      display: grid;
+      grid-template-columns: repeat(3, 58px);
+      grid-template-rows: repeat(2, 58px);
+      gap: 8px;
+      user-select: none;
+    }
+
+    .control {
+      width: 58px;
+      height: 58px;
+      border: 1px solid rgba(255, 244, 210, 0.26);
+      border-radius: 8px;
+      background: rgba(22, 25, 24, 0.72);
+      color: #fff4cf;
+      font-size: 25px;
+      font-weight: 800;
+      line-height: 1;
+      box-shadow: 0 10px 22px rgba(0, 0, 0, 0.24);
+      touch-action: none;
+    }
+
+    .control:active,
+    .control.active {
+      background: rgba(255, 244, 210, 0.9);
+      color: #1c211e;
+      transform: translateY(1px);
+    }
+
+    .control.up {
+      grid-column: 2;
+      grid-row: 1;
+    }
+
+    .control.left {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    .control.down {
+      grid-column: 2;
+      grid-row: 2;
+    }
+
+    .control.right {
+      grid-column: 3;
+      grid-row: 2;
+    }
+
+    @media (max-width: 640px) {
+      .hud {
+        min-width: 145px;
+        padding: 8px 9px;
+      }
+
+      .controls {
+        grid-template-columns: repeat(3, 52px);
+        grid-template-rows: repeat(2, 52px);
+        gap: 7px;
+      }
+
+      .control {
+        width: 52px;
+        height: 52px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game" aria-label="Top-down city driving game"></canvas>
+
+  <div class="hud">
+    <strong>City Blocks Chase</strong>
+    <span id="speed">Speed 0</span>
+    <span id="wanted">Wanted -</span>
+    <span id="round">Round 1</span>
+    <span>Arrow keys or buttons</span>
+  </div>
+
+  <div id="message" class="message"></div>
+
+  <div class="controls" aria-label="Driving controls">
+    <button class="control up" data-key="ArrowUp" aria-label="Accelerate">▲</button>
+    <button class="control left" data-key="ArrowLeft" aria-label="Turn left">◀</button>
+    <button class="control down" data-key="ArrowDown" aria-label="Brake and reverse">▼</button>
+    <button class="control right" data-key="ArrowRight" aria-label="Turn right">▶</button>
+  </div>
+
+  <script>
+    "use strict";
+
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d", { alpha: false });
+    const speedEl = document.getElementById("speed");
+    const wantedEl = document.getElementById("wanted");
+    const roundEl = document.getElementById("round");
+    const messageEl = document.getElementById("message");
+
+    const GRID = 16;
+    const ROAD = 72;
+    const BLOCK = 180;
+    const CELL = ROAD + BLOCK;
+    const WORLD = GRID * CELL + ROAD;
+    const HOUSE = BLOCK / 3;
+    const LANE_WIDTH = ROAD / 2;
+    const HOUSE_CELLS = [[0, 0], [1, 0], [2, 0], [0, 1], [2, 1], [0, 2], [1, 2], [2, 2]];
+    const TOTAL_CARS = 100;
+    const POLICE_COUNT = 8;
+    const keys = new Set();
+
+    const palette = {
+      grass: "#738f58",
+      road: "#2f3033",
+      roadDark: "#25262a",
+      sidewalk: "#d6c392",
+      sidewalkLight: "#ead9aa",
+      curb: "#f7ead2",
+      lane: "#f7f3e7",
+      courtyard: "#879d63",
+      shadow: "rgba(30, 25, 18, 0.22)",
+      roof: ["#c8754a", "#d1915d", "#b76c51", "#d5a45e", "#a96e56", "#c18663"],
+      rightFace: ["#9e543d", "#a86843", "#8b5746", "#a8783f", "#875843", "#9a654a"],
+      bottomFace: ["#b15f42", "#bf784e", "#9d604e", "#bb8849", "#975f47", "#ab7052"],
+      policeRoof: "#2f65a8",
+      policeFace: "#244a7d",
+      glass: "#62b8e2",
+      glassDark: "#397fa6",
+      frame: "#fff0c8"
+    };
+
+    const player = {
+      x: 0,
+      y: 0,
+      angle: 0,
+      speed: 0,
+      radius: 16,
+      length: 29,
+      width: 16,
+      maxSpeed: 250,
+      reverseSpeed: -95,
+      acceleration: 320,
+      brake: 390,
+      drag: 0.93
+    };
+
+    const cars = [];
+    const policeCars = [];
+    const pedestrians = [];
+    const blocks = [];
+    let carSerial = 0;
+    let wantedLevel = 0;
+    let round = 1;
+    let messageTimer = 0;
+    let wantedCooldown = 0;
+    let lastTime = performance.now();
+
+    function resize() {
+      const ratio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      canvas.width = Math.floor(window.innerWidth * ratio);
+      canvas.height = Math.floor(window.innerHeight * ratio);
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    }
+
+    function rand(seed) {
+      const n = Math.sin(seed * 127.1 + seed * seed * 0.013) * 43758.5453123;
+      return n - Math.floor(n);
+    }
+
+    function randInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function seededInt(seed, min, max) {
+      return min + Math.floor(rand(seed) * (max - min + 1));
+    }
+
+    function clamp(v, min, max) {
+      return Math.max(min, Math.min(max, v));
+    }
+
+    function angleTo(dx, dy) {
+      return Math.atan2(dy, dx);
+    }
+
+    function blockWorldX(gx) {
+      return ROAD + gx * CELL;
+    }
+
+    function blockWorldY(gy) {
+      return ROAD + gy * CELL;
+    }
+
+    function intersectionCenter(ix, iy) {
+      return [ix * CELL + ROAD / 2, iy * CELL + ROAD / 2];
+    }
+
+    function laneOffset(dx, dy) {
+      if (dx > 0) return [0, LANE_WIDTH / 2];
+      if (dx < 0) return [0, -LANE_WIDTH / 2];
+      if (dy > 0) return [-LANE_WIDTH / 2, 0];
+      if (dy < 0) return [LANE_WIDTH / 2, 0];
+      return [0, 0];
+    }
+
+    function laneNormal(dx, dy) {
+      const [ox, oy] = laneOffset(dx, dy);
+      const len = Math.hypot(ox, oy) || 1;
+      return [ox / len, oy / len];
+    }
+
+    function lanePos(fromIX, fromIY, toIX, toIY, t) {
+      const [fx, fy] = intersectionCenter(fromIX, fromIY);
+      const [tx, ty] = intersectionCenter(toIX, toIY);
+      const [ox, oy] = laneOffset(toIX - fromIX, toIY - fromIY);
+      return [fx + (tx - fx) * t + ox, fy + (ty - fy) * t + oy];
+    }
+
+    function lanePosWithLateral(fromIX, fromIY, toIX, toIY, t, lateral) {
+      const [x, y] = lanePos(fromIX, fromIY, toIX, toIY, t);
+      const [nx, ny] = laneNormal(toIX - fromIX, toIY - fromIY);
+      return [x + nx * lateral, y + ny * lateral];
+    }
+
+    function nearestIntersection(x, y) {
+      return {
+        ix: clamp(Math.round((x - ROAD / 2) / CELL), 0, GRID),
+        iy: clamp(Math.round((y - ROAD / 2) / CELL), 0, GRID)
+      };
+    }
+
+    function neighborDirs(ix, iy) {
+      const dirs = [];
+      if (ix + 1 <= GRID) dirs.push([1, 0]);
+      if (iy + 1 <= GRID) dirs.push([0, 1]);
+      if (ix - 1 >= 0) dirs.push([-1, 0]);
+      if (iy - 1 >= 0) dirs.push([0, -1]);
+      return dirs;
+    }
+
+    function turnVector(dx, dy, side) {
+      return side < 0 ? [dy, -dx] : [-dy, dx];
+    }
+
+    function createBlocks() {
+      blocks.length = 0;
+      for (let gy = 0; gy < GRID; gy++) {
+        for (let gx = 0; gx < GRID; gx++) {
+          const seed = gy * GRID + gx + 1;
+          const police = rand(seed * 4.7) > 0.88;
+          const houses = [];
+          for (const [hx, hy] of HOUSE_CELLS) {
+            const houseSeed = seed * 29 + hx * 7 + hy * 13;
+            const isPoliceHouse = police && hy === 2;
+            houses.push({
+              hx,
+              hy,
+              floors: seededInt(houseSeed, 4, 7),
+              colorIndex: seededInt(houseSeed + 9, 0, palette.roof.length - 1),
+              police: isPoliceHouse
+            });
+          }
+          blocks.push({ gx, gy, police, houses });
+        }
+      }
+    }
+
+    function blockAt(gx, gy) {
+      if (gx < 0 || gx >= GRID || gy < 0 || gy >= GRID) return null;
+      return blocks[gy * GRID + gx];
+    }
+
+    function inBuilding(x, y) {
+      if (x < ROAD || y < ROAD) return false;
+      const gx = Math.floor((x - ROAD) / CELL);
+      const gy = Math.floor((y - ROAD) / CELL);
+      if (gx < 0 || gx >= GRID || gy < 0 || gy >= GRID) return false;
+
+      const lx = x - blockWorldX(gx);
+      const ly = y - blockWorldY(gy);
+      if (lx < 0 || ly < 0 || lx >= BLOCK || ly >= BLOCK) return false;
+
+      const hx = Math.floor(lx / HOUSE);
+      const hy = Math.floor(ly / HOUSE);
+      if (hx === 1 && hy === 1) return false;
+
+      const inset = 5;
+      const localX = lx - hx * HOUSE;
+      const localY = ly - hy * HOUSE;
+      return localX >= inset && localX <= HOUSE - inset && localY >= inset && localY <= HOUSE - inset;
+    }
+
+    function buildingRectAt(x, y) {
+      if (x < ROAD || y < ROAD) return null;
+      const gx = Math.floor((x - ROAD) / CELL);
+      const gy = Math.floor((y - ROAD) / CELL);
+      if (gx < 0 || gx >= GRID || gy < 0 || gy >= GRID) return null;
+
+      const lx = x - blockWorldX(gx);
+      const ly = y - blockWorldY(gy);
+      if (lx < 0 || ly < 0 || lx >= BLOCK || ly >= BLOCK) return null;
+
+      const hx = Math.floor(lx / HOUSE);
+      const hy = Math.floor(ly / HOUSE);
+      if (hx === 1 && hy === 1) return null;
+
+      const inset = 5;
+      const localX = lx - hx * HOUSE;
+      const localY = ly - hy * HOUSE;
+      if (localX < inset || localX > HOUSE - inset || localY < inset || localY > HOUSE - inset) return null;
+
+      return {
+        x: blockWorldX(gx) + hx * HOUSE + inset,
+        y: blockWorldY(gy) + hy * HOUSE + inset,
+        w: HOUSE - inset * 2,
+        h: HOUSE - inset * 2
+      };
+    }
+
+    function rectHitsBuilding(cx, cy, length, width, angle) {
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const halfL = length / 2;
+      const halfW = width / 2;
+      const points = [];
+      for (let ix = -1; ix <= 1; ix++) {
+        for (let iy = -1; iy <= 1; iy++) {
+          points.push([halfL * ix, halfW * iy]);
+        }
+      }
+      points.push([-halfL * 0.65, -halfW], [halfL * 0.65, -halfW], [-halfL * 0.65, halfW], [halfL * 0.65, halfW]);
+
+      for (const [px, py] of points) {
+        const wx = cx + px * cos - py * sin;
+        const wy = cy + px * sin + py * cos;
+        if (wx < 5 || wy < 5 || wx > WORLD - 5 || wy > WORLD - 5) return true;
+        if (inBuilding(wx, wy)) return true;
+      }
+      return false;
+    }
+
+    function pushPlayerOutOfBuilding() {
+      let moved = false;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const rect = buildingRectAt(player.x, player.y);
+        if (!rect && !rectHitsBuilding(player.x, player.y, player.length, player.width, player.angle)) break;
+
+        if (rect) {
+          const left = player.x - rect.x;
+          const right = rect.x + rect.w - player.x;
+          const top = player.y - rect.y;
+          const bottom = rect.y + rect.h - player.y;
+          const min = Math.min(left, right, top, bottom);
+          const margin = player.radius + 3;
+          if (min === left) player.x = rect.x - margin;
+          else if (min === right) player.x = rect.x + rect.w + margin;
+          else if (min === top) player.y = rect.y - margin;
+          else player.y = rect.y + rect.h + margin;
+          moved = true;
+          continue;
+        }
+
+        let best = null;
+        for (let r = 8; r <= 90 && !best; r += 8) {
+          for (let i = 0; i < 16; i++) {
+            const a = i / 16 * Math.PI * 2;
+            const x = clamp(player.x + Math.cos(a) * r, 8, WORLD - 8);
+            const y = clamp(player.y + Math.sin(a) * r, 8, WORLD - 8);
+            if (!rectHitsBuilding(x, y, player.length, player.width, player.angle)) {
+              best = { x, y };
+              break;
+            }
+          }
+        }
+        if (!best) break;
+        player.x = best.x;
+        player.y = best.y;
+        moved = true;
+      }
+
+      if (moved) player.speed = 0;
+    }
+
+    function bfsFirstStep(sIX, sIY, gIX, gIY) {
+      if (sIX === gIX && sIY === gIY) return null;
+      const n = GRID + 1;
+      const key = (x, y) => y * n + x;
+      const visited = new Uint8Array(n * n);
+      const queue = [];
+
+      visited[key(sIX, sIY)] = 1;
+      for (const [dx, dy] of neighborDirs(sIX, sIY)) {
+        const nx = sIX + dx;
+        const ny = sIY + dy;
+        visited[key(nx, ny)] = 1;
+        queue.push({ ix: nx, iy: ny, first: [dx, dy] });
+      }
+
+      for (let head = 0; head < queue.length; head++) {
+        const cur = queue[head];
+        if (cur.ix === gIX && cur.iy === gIY) return cur.first;
+        for (const [dx, dy] of neighborDirs(cur.ix, cur.iy)) {
+          const nx = cur.ix + dx;
+          const ny = cur.iy + dy;
+          const k = key(nx, ny);
+          if (visited[k]) continue;
+          visited[k] = 1;
+          queue.push({ ix: nx, iy: ny, first: cur.first });
+        }
+      }
+      return null;
+    }
+
+    class AICar {
+      constructor(isPolice, existing) {
+        this.id = carSerial++;
+        this.isPolice = isPolice;
+        this.color = isPolice ? "#174ea6" : ["#c84836", "#2f8f6b", "#d49a32", "#6c79d8", "#cf5f88", "#c7c0ab", "#3e748f"][Math.floor(Math.random() * 7)];
+        this.length = isPolice ? 30 : 27;
+        this.width = 15;
+        this.radius = isPolice ? 17 : 16;
+        this.baseSpeed = isPolice ? 92 : 62 + Math.random() * 36;
+        this.chaseSpeed = 154;
+        this.chasing = false;
+        this.blockedTime = 0;
+        this.yieldTimer = 0;
+        this.overtakeTimer = 0;
+        this.lateralOffset = 0;
+        this.targetLateral = 0;
+        this.blocksUntilTurn = randInt(4, 5);
+        this.turnSide = Math.random() < 0.5 ? -1 : 1;
+        this.lastDx = 1;
+        this.lastDy = 0;
+        this.progress = 0;
+        this.fromIX = 0;
+        this.fromIY = 0;
+        this.toIX = 1;
+        this.toIY = 0;
+
+        for (let attempt = 0; attempt < 100; attempt++) {
+          const ix = randInt(0, GRID);
+          const iy = randInt(0, GRID);
+          const dirs = neighborDirs(ix, iy);
+          if (!dirs.length) continue;
+          const [dx, dy] = dirs[Math.floor(Math.random() * dirs.length)];
+          this.fromIX = ix;
+          this.fromIY = iy;
+          this.toIX = ix + dx;
+          this.toIY = iy + dy;
+          this.lastDx = dx;
+          this.lastDy = dy;
+          this.progress = 0.06 + Math.random() * 0.88;
+          this.refreshPosition();
+          const clear = existing.every(car => Math.hypot(car.x - this.x, car.y - this.y) > 48);
+          if (clear) return;
+        }
+      }
+
+      refreshPosition() {
+        const [x, y] = lanePosWithLateral(this.fromIX, this.fromIY, this.toIX, this.toIY, this.progress, this.lateralOffset);
+        this.x = x;
+        this.y = y;
+        this.angle = angleTo(this.toIX - this.fromIX, this.toIY - this.fromIY);
+      }
+
+      sameSegment(other) {
+        return this.fromIX === other.fromIX && this.fromIY === other.fromIY && this.toIX === other.toIX && this.toIY === other.toIY;
+      }
+
+      sameTrafficLane(other) {
+        return this.sameSegment(other) && Math.abs(this.lateralOffset - other.lateralOffset) < 18;
+      }
+
+      continuesInto(other) {
+        const dx = this.toIX - this.fromIX;
+        const dy = this.toIY - this.fromIY;
+        return this.toIX === other.fromIX
+          && this.toIY === other.fromIY
+          && other.toIX - other.fromIX === dx
+          && other.toIY - other.fromIY === dy
+          && Math.abs(this.lateralOffset - other.lateralOffset) < 18;
+      }
+
+      nextIntersectionKey() {
+        return `${this.toIX},${this.toIY}`;
+      }
+
+      intersectionPriority(other) {
+        if (this.chasing !== other.chasing) return this.chasing ? -1 : 1;
+        if (this.isPolice !== other.isPolice) return this.isPolice ? -1 : 1;
+        return this.id - other.id;
+      }
+
+      shouldYieldTo(other) {
+        if (this.sameSegment(other)) return this.sameTrafficLane(other) && other.progress > this.progress;
+        if (this.continuesInto(other)) return this.progress > 0.8 && other.progress < 0.24;
+
+        if (this.blockedTime > 0.8) return false;
+        if (other.blockedTime > 0.8 && (other.progress > 0.94 || other.progress < 0.08)) return false;
+
+        const thisInIntersection = this.progress > 0.9 || this.progress < 0.1;
+        const otherInIntersection = other.progress > 0.9 || other.progress < 0.1;
+        if (thisInIntersection && !otherInIntersection) return false;
+        if (!thisInIntersection && otherInIntersection) return true;
+        if (this.nextIntersectionKey() !== other.nextIntersectionKey()) return false;
+
+        return this.intersectionPriority(other) > 0;
+      }
+
+      blockedInfo(allCars, player, lateral = this.lateralOffset, lookAhead = 0.085) {
+        const step = Math.min(1, this.progress + lookAhead);
+        const [ax, ay] = lanePosWithLateral(this.fromIX, this.fromIY, this.toIX, this.toIY, step, lateral);
+
+        for (const other of allCars) {
+          if (other === this) continue;
+          const d = Math.hypot(other.x - ax, other.y - ay);
+          if (d > 30) continue;
+          if (this.shouldYieldTo(other)) return { blocked: true, blocker: other };
+        }
+
+        if (Math.hypot(player.x - ax, player.y - ay) < 30) return { blocked: true, blocker: player };
+        return { blocked: false, blocker: null };
+      }
+
+      blockedByCar(allCars, player) {
+        return this.blockedInfo(allCars, player).blocked;
+      }
+
+      overtakeIsSafe(allCars, player) {
+        if (this.progress < 0.2 || this.progress > 0.62) return false;
+        const passingLateral = -LANE_WIDTH;
+
+        for (const lookAhead of [0.08, 0.16, 0.25, 0.34]) {
+          const t = Math.min(0.96, this.progress + lookAhead);
+          const [ax, ay] = lanePosWithLateral(this.fromIX, this.fromIY, this.toIX, this.toIY, t, passingLateral);
+          if (Math.hypot(player.x - ax, player.y - ay) < 34) return false;
+          for (const other of allCars) {
+            if (other === this) continue;
+            if (Math.hypot(other.x - ax, other.y - ay) < 34) return false;
+          }
+        }
+
+        return true;
+      }
+
+      tryEscapeFromIntersection(allCars, player) {
+        if (this.progress > 0.08 || this.blockedTime < 2 || this.chasing) return false;
+
+        const dirs = neighborDirs(this.fromIX, this.fromIY)
+          .filter(([dx, dy]) => this.fromIX + dx !== this.toIX || this.fromIY + dy !== this.toIY)
+          .filter(([dx, dy]) => dx !== -this.lastDx || dy !== -this.lastDy);
+
+        for (const [dx, dy] of dirs) {
+          const nx = this.fromIX + dx;
+          const ny = this.fromIY + dy;
+          let clear = true;
+          for (const t of [0.1, 0.22, 0.34]) {
+            const [x, y] = lanePosWithLateral(this.fromIX, this.fromIY, nx, ny, t, 0);
+            if (Math.hypot(player.x - x, player.y - y) < 36) {
+              clear = false;
+              break;
+            }
+            for (const other of allCars) {
+              if (other === this) continue;
+              if (Math.hypot(other.x - x, other.y - y) < 36) {
+                clear = false;
+                break;
+              }
+            }
+            if (!clear) break;
+          }
+
+          if (!clear) continue;
+          this.toIX = nx;
+          this.toIY = ny;
+          this.progress = 0.08;
+          this.lateralOffset = 0;
+          this.targetLateral = 0;
+          this.overtakeTimer = 0;
+          this.blockedTime = 0;
+          this.refreshPosition();
+          return true;
+        }
+
+        return false;
+      }
+
+      update(dt, allCars, player) {
+        if (this.yieldTimer > 0) this.yieldTimer -= dt;
+        if (this.overtakeTimer > 0) this.overtakeTimer -= dt;
+        const speed = this.chasing ? this.chaseSpeed : this.baseSpeed;
+        const progressStep = speed * dt / CELL;
+        const info = this.blockedInfo(allCars, player);
+        const blocked = info.blocked;
+        this.blockedTime = blocked ? this.blockedTime + dt : 0;
+        const canPass = blocked && info.blocker !== player && this.overtakeIsSafe(allCars, player);
+        const midBlockJam = blocked && !canPass && !this.chasing && this.progress > 0.14 && this.progress < 0.82;
+        const impatient = this.blockedTime > (this.isPolice ? 0.45 : 0.9) && !midBlockJam;
+
+        if (blocked && this.tryEscapeFromIntersection(allCars, player)) return;
+
+        if (canPass && this.blockedTime > 0.35) {
+          this.overtakeTimer = 1.25;
+        }
+
+        const mustMergeBack = this.progress > 0.62 || (this.overtakeTimer > 0 && !this.overtakeIsSafe(allCars, player));
+        if (mustMergeBack) this.overtakeTimer = 0;
+        this.targetLateral = this.overtakeTimer > 0 ? -LANE_WIDTH : 0;
+        const lateralStep = 82 * dt;
+        if (this.lateralOffset < this.targetLateral) {
+          this.lateralOffset = Math.min(this.targetLateral, this.lateralOffset + lateralStep);
+        } else if (this.lateralOffset > this.targetLateral) {
+          this.lateralOffset = Math.max(this.targetLateral, this.lateralOffset - lateralStep);
+        }
+
+        const mergingBeforeIntersection = this.progress > 0.66 && Math.abs(this.lateralOffset) > 3;
+
+        if (mergingBeforeIntersection) {
+          this.progress = Math.min(this.progress, 0.68);
+        } else if (!blocked || this.chasing || impatient || this.overtakeTimer > 0) {
+          this.progress += progressStep * (this.yieldTimer > 0 ? 0.35 : 1);
+          if (impatient) this.blockedTime = Math.min(this.blockedTime, 0.5);
+        } else if (this.progress > 0.82) {
+          this.progress += progressStep * 0.28;
+        } else if (this.blockedTime > 0.8) {
+          this.progress = Math.max(0.04, this.progress - progressStep * 0.7);
+        } else {
+          this.progress = Math.max(0.02, this.progress - progressStep * 0.04);
+        }
+
+        while (this.progress >= 1) {
+          this.progress -= 1;
+          this.lastDx = this.toIX - this.fromIX;
+          this.lastDy = this.toIY - this.fromIY;
+          this.fromIX = this.toIX;
+          this.fromIY = this.toIY;
+          this.lateralOffset = 0;
+          this.targetLateral = 0;
+          this.overtakeTimer = 0;
+          this.pickNextDirection(player);
+        }
+        this.refreshPosition();
+      }
+
+      pickNextDirection(player) {
+        let chosen = null;
+
+        if (this.chasing && this.isPolice) {
+          const goal = nearestIntersection(player.x, player.y);
+          chosen = bfsFirstStep(this.fromIX, this.fromIY, goal.ix, goal.iy);
+        }
+
+        const dirs = neighborDirs(this.fromIX, this.fromIY);
+        const noUTurn = dirs.filter(([dx, dy]) => !(dx === -this.lastDx && dy === -this.lastDy));
+        const candidates = noUTurn.length ? noUTurn : dirs;
+
+        if (!chosen) {
+          this.blocksUntilTurn--;
+          if (this.blocksUntilTurn <= 0) {
+            const rightOrLeft = turnVector(this.lastDx, this.lastDy, this.turnSide);
+            const alternate = turnVector(this.lastDx, this.lastDy, -this.turnSide);
+            chosen = candidates.find(([dx, dy]) => dx === rightOrLeft[0] && dy === rightOrLeft[1])
+              || candidates.find(([dx, dy]) => dx === alternate[0] && dy === alternate[1])
+              || null;
+            this.blocksUntilTurn = randInt(4, 5);
+            this.turnSide *= -1;
+          }
+        }
+
+        if (!chosen) {
+          chosen = candidates.find(([dx, dy]) => dx === this.lastDx && dy === this.lastDy)
+            || candidates[Math.floor(Math.random() * candidates.length)];
+        }
+
+        this.toIX = this.fromIX + chosen[0];
+        this.toIY = this.fromIY + chosen[1];
+      }
+    }
+
+    function createTraffic() {
+      cars.length = 0;
+      policeCars.length = 0;
+      carSerial = 0;
+      for (let i = 0; i < TOTAL_CARS - POLICE_COUNT; i++) {
+        cars.push(new AICar(false, cars));
+      }
+      for (let i = 0; i < POLICE_COUNT; i++) {
+        const car = new AICar(true, cars);
+        cars.push(car);
+        policeCars.push(car);
+      }
+    }
+
+    function createPedestrians() {
+      pedestrians.length = 0;
+      for (let i = 0; i < 90; i++) {
+        const gx = randInt(0, GRID - 1);
+        const gy = randInt(0, GRID - 1);
+        pedestrians.push({
+          gx,
+          gy,
+          t: Math.random() * 4,
+          speed: 0.15 + Math.random() * 0.18,
+          color: ["#efe6cc", "#425c8a", "#a63c40", "#2d7158", "#d7a047"][i % 5]
+        });
+      }
+    }
+
+    function pedestrianPosition(ped) {
+      const x = blockWorldX(ped.gx);
+      const y = blockWorldY(ped.gy);
+      const inset = 12;
+      const side = Math.floor(ped.t) % 4;
+      const f = ped.t - Math.floor(ped.t);
+      if (side === 0) return [x + inset + f * (BLOCK - inset * 2), y + inset];
+      if (side === 1) return [x + BLOCK - inset, y + inset + f * (BLOCK - inset * 2)];
+      if (side === 2) return [x + BLOCK - inset - f * (BLOCK - inset * 2), y + BLOCK - inset];
+      return [x + inset, y + BLOCK - inset - f * (BLOCK - inset * 2)];
+    }
+
+    function placePlayer() {
+      const ix = Math.floor(GRID / 2);
+      const iy = Math.floor(GRID / 2);
+      const [x, y] = lanePos(ix, iy, ix + 1, iy, 0.35);
+      player.x = x;
+      player.y = y;
+      player.angle = 0;
+      player.speed = 0;
+    }
+
+    function showMessage(text, ms) {
+      messageEl.textContent = text;
+      messageEl.style.display = "block";
+      messageTimer = ms / 1000;
+    }
+
+    function resetRound(text) {
+      round++;
+      wantedLevel = 0;
+      wantedCooldown = 0;
+      createTraffic();
+      placePlayer();
+      showMessage(text || "BUSTED", 1400);
+    }
+
+    function activateNearestPolice() {
+      let best = null;
+      let bestD = Infinity;
+      for (const police of policeCars) {
+        if (police.chasing) continue;
+        const d = Math.hypot(police.x - player.x, police.y - player.y);
+        if (d < bestD) {
+          bestD = d;
+          best = police;
+        }
+      }
+      if (best) best.chasing = true;
+    }
+
+    function bumpWanted() {
+      if (wantedCooldown > 0) return;
+      wantedCooldown = 0.8;
+      wantedLevel = Math.min(POLICE_COUNT, wantedLevel + 1);
+      activateNearestPolice();
+    }
+
+    function updatePlayer(dt) {
+      pushPlayerOutOfBuilding();
+
+      if (keys.has("ArrowUp")) {
+        player.speed += player.acceleration * dt;
+      } else if (keys.has("ArrowDown")) {
+        player.speed -= player.brake * dt;
+      } else {
+        player.speed *= Math.pow(player.drag, dt * 60);
+        if (Math.abs(player.speed) < 4) player.speed = 0;
+      }
+
+      player.speed = clamp(player.speed, player.reverseSpeed, player.maxSpeed);
+
+      const turn = (keys.has("ArrowRight") ? 1 : 0) - (keys.has("ArrowLeft") ? 1 : 0);
+      const steer = (1.7 + Math.min(Math.abs(player.speed) / 120, 1) * 1.7) * dt;
+      player.angle += turn * steer * Math.sign(player.speed || 1);
+
+      const distance = Math.abs(player.speed) * dt;
+      const steps = Math.max(1, Math.ceil(distance / 7));
+      for (let step = 0; step < steps; step++) {
+        const dx = Math.cos(player.angle) * player.speed * dt / steps;
+        const dy = Math.sin(player.angle) * player.speed * dt / steps;
+        const nextX = player.x + dx;
+        const nextY = player.y + dy;
+
+        if (!rectHitsBuilding(nextX, nextY, player.length, player.width, player.angle)) {
+          player.x = nextX;
+          player.y = nextY;
+        } else if (!rectHitsBuilding(player.x + dx, player.y, player.length, player.width, player.angle)) {
+          player.x += dx;
+          player.speed *= 0.55;
+        } else if (!rectHitsBuilding(player.x, player.y + dy, player.length, player.width, player.angle)) {
+          player.y += dy;
+          player.speed *= 0.55;
+        } else {
+          player.speed *= -0.18;
+          break;
+        }
+      }
+
+      player.x = clamp(player.x, 8, WORLD - 8);
+      player.y = clamp(player.y, 8, WORLD - 8);
+      pushPlayerOutOfBuilding();
+    }
+
+    function resolveCarPair(a, b) {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const d = Math.max(0.001, Math.hypot(dx, dy));
+      const minD = (a.radius || 13) + (b.radius || 13);
+      if (d >= minD) return false;
+
+      const overlap = minD - d;
+      const nx = dx / d;
+      const ny = dy / d;
+
+      if (a === player || b === player) {
+        const car = a === player ? b : a;
+        const impactSpeed = Math.abs(player.speed);
+        if (a === player) {
+          player.x -= nx * overlap * 0.7;
+          player.y -= ny * overlap * 0.7;
+        } else {
+          player.x += nx * overlap * 0.7;
+          player.y += ny * overlap * 0.7;
+        }
+        player.speed *= 0.45;
+        car.yieldTimer = 0.25;
+        if (impactSpeed > 40) bumpWanted();
+        return true;
+      }
+
+      if (a.continuesInto(b) || b.continuesInto(a)) {
+        const behind = a.continuesInto(b) ? a : b;
+        const ahead = behind === a ? b : a;
+        behind.progress = Math.max(0.04, behind.progress - overlap / CELL * 0.85);
+        ahead.progress = Math.min(0.96, ahead.progress + overlap / CELL * 0.35);
+        behind.yieldTimer = 0.25;
+        behind.overtakeTimer = 0;
+        behind.targetLateral = 0;
+        behind.refreshPosition();
+        ahead.refreshPosition();
+        return true;
+      }
+
+      if (a.sameSegment(b) && !a.sameTrafficLane(b)) {
+        const behind = a.progress < b.progress ? a : b;
+        behind.overtakeTimer = 0;
+        behind.targetLateral = 0;
+        behind.progress = Math.max(0.04, behind.progress - overlap / CELL * 0.55);
+
+        const merging = Math.abs(a.lateralOffset) > Math.abs(b.lateralOffset) ? a : b;
+        merging.overtakeTimer = 0;
+        merging.targetLateral = 0;
+        merging.lateralOffset += (0 - merging.lateralOffset) * 0.35;
+        a.refreshPosition();
+        b.refreshPosition();
+        return true;
+      }
+
+      if (a.sameSegment(b)) {
+        const progressPush = overlap / CELL;
+        if (a.progress < b.progress) {
+          const oldA = a.progress;
+          a.progress = Math.max(0.02, a.progress - progressPush * 0.85);
+          b.progress = Math.min(0.98, b.progress + progressPush * (oldA <= 0.04 ? 0.95 : 0.45));
+          a.yieldTimer = 0.2;
+        } else {
+          const oldB = b.progress;
+          b.progress = Math.max(0.02, b.progress - progressPush * 0.85);
+          a.progress = Math.min(0.98, a.progress + progressPush * (oldB <= 0.04 ? 0.95 : 0.45));
+          b.yieldTimer = 0.2;
+        }
+      } else {
+        const priority = a.chasing || (!b.chasing && a.fromIX + a.fromIY < b.fromIX + b.fromIY) ? a : b;
+        const yielding = priority === a ? b : a;
+        yielding.progress = Math.max(0.03, yielding.progress - overlap / CELL * 0.9);
+        yielding.yieldTimer = 0.45;
+        priority.progress = Math.min(0.98, priority.progress + overlap / CELL * 0.22);
+        priority.refreshPosition();
+        yielding.refreshPosition();
+
+        const pushX = priority === b ? nx : -nx;
+        const pushY = priority === b ? ny : -ny;
+        priority.x += pushX * overlap * 0.35;
+        priority.y += pushY * overlap * 0.35;
+        yielding.x -= pushX * overlap * 0.65;
+        yielding.y -= pushY * overlap * 0.65;
+        return true;
+      }
+
+      a.refreshPosition();
+      b.refreshPosition();
+      a.x -= nx * overlap * 0.5;
+      a.y -= ny * overlap * 0.5;
+      b.x += nx * overlap * 0.5;
+      b.y += ny * overlap * 0.5;
+      return true;
+    }
+
+    function resolveCollisions() {
+      for (let pass = 0; pass < 3; pass++) {
+        for (let i = 0; i < cars.length; i++) {
+          resolveCarPair(player, cars[i]);
+          for (let j = i + 1; j < cars.length; j++) {
+            if (Math.abs(cars[i].x - cars[j].x) > 36 || Math.abs(cars[i].y - cars[j].y) > 36) continue;
+            resolveCarPair(cars[i], cars[j]);
+          }
+        }
+      }
+
+      if (wantedLevel > 0) {
+        for (const police of policeCars) {
+          if (!police.chasing) continue;
+          if (Math.hypot(police.x - player.x, police.y - player.y) < 27) {
+            resetRound("BUSTED - ROUND " + (round + 1));
+            return;
+          }
+        }
+      }
+    }
+
+    function update(dt) {
+      if (wantedCooldown > 0) wantedCooldown -= dt;
+      updatePlayer(dt);
+      for (const car of cars) car.update(dt, cars, player);
+      resolveCollisions();
+
+      for (const ped of pedestrians) {
+        ped.t += ped.speed * dt;
+        if (ped.t >= 4) ped.t -= 4;
+      }
+
+      if (messageTimer > 0) {
+        messageTimer -= dt;
+        if (messageTimer <= 0) messageEl.style.display = "none";
+      }
+    }
+
+    function createCamera() {
+      const speedFactor = Math.min(1, Math.abs(player.speed) / player.maxSpeed);
+      const zoom = 1.52 - speedFactor * 0.52;
+      return {
+        x: player.x,
+        y: player.y,
+        w: window.innerWidth,
+        h: window.innerHeight,
+        scale: Math.max(0.94, zoom)
+      };
+    }
+
+    function worldToScreen(x, y, cam) {
+      return {
+        x: (x - cam.x) * cam.scale + cam.w / 2,
+        y: (y - cam.y) * cam.scale + cam.h / 2
+      };
+    }
+
+    function drawWorldRect(x, y, w, h, cam, color) {
+      const p = worldToScreen(x, y, cam);
+      ctx.fillStyle = color;
+      ctx.fillRect(p.x, p.y, w * cam.scale, h * cam.scale);
+    }
+
+    function rectVisible(x, y, w, h, cam, pad = 90) {
+      const p = worldToScreen(x, y, cam);
+      return p.x + w * cam.scale > -pad && p.y + h * cam.scale > -pad && p.x < cam.w + pad && p.y < cam.h + pad;
+    }
+
+    function drawRoads(cam) {
+      ctx.fillStyle = palette.grass;
+      ctx.fillRect(0, 0, cam.w, cam.h);
+
+      const minX = cam.x - cam.w / (2 * cam.scale) - 80;
+      const maxX = cam.x + cam.w / (2 * cam.scale) + 80;
+      const minY = cam.y - cam.h / (2 * cam.scale) - 80;
+      const maxY = cam.y + cam.h / (2 * cam.scale) + 80;
+
+      for (let i = 0; i <= GRID; i++) {
+        const roadStart = i * CELL;
+        if (roadStart <= maxY && roadStart + ROAD >= minY) {
+          drawWorldRect(0, roadStart, WORLD, ROAD, cam, palette.road);
+          drawWorldRect(0, roadStart, WORLD, 5, cam, palette.roadDark);
+          drawWorldRect(0, roadStart + ROAD - 5, WORLD, 5, cam, palette.roadDark);
+        }
+        if (roadStart <= maxX && roadStart + ROAD >= minX) {
+          drawWorldRect(roadStart, 0, ROAD, WORLD, cam, palette.road);
+          drawWorldRect(roadStart, 0, 5, WORLD, cam, palette.roadDark);
+          drawWorldRect(roadStart + ROAD - 5, 0, 5, WORLD, cam, palette.roadDark);
+        }
+      }
+
+      ctx.save();
+      ctx.strokeStyle = palette.lane;
+      ctx.lineWidth = Math.max(1, 2.2 * cam.scale);
+      ctx.setLineDash([22 * cam.scale, 20 * cam.scale]);
+      for (let i = 0; i <= GRID; i++) {
+        const y = worldToScreen(0, i * CELL + ROAD / 2, cam).y;
+        if (y < -50 || y > cam.h + 50) continue;
+        ctx.beginPath();
+        ctx.moveTo(worldToScreen(0, 0, cam).x, y);
+        ctx.lineTo(worldToScreen(WORLD, 0, cam).x, y);
+        ctx.stroke();
+      }
+      for (let i = 0; i <= GRID; i++) {
+        const x = worldToScreen(i * CELL + ROAD / 2, 0, cam).x;
+        if (x < -50 || x > cam.w + 50) continue;
+        ctx.beginPath();
+        ctx.moveTo(x, worldToScreen(0, 0, cam).y);
+        ctx.lineTo(x, worldToScreen(0, WORLD, cam).y);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      ctx.strokeStyle = "rgba(255, 244, 221, 0.52)";
+      ctx.lineWidth = Math.max(1, 1.25 * cam.scale);
+      for (let i = 0; i <= GRID; i++) {
+        const a = i * CELL + 8;
+        const b = i * CELL + ROAD - 8;
+        for (const yWorld of [a, b]) {
+          const y = worldToScreen(0, yWorld, cam).y;
+          ctx.beginPath();
+          ctx.moveTo(worldToScreen(0, 0, cam).x, y);
+          ctx.lineTo(worldToScreen(WORLD, 0, cam).x, y);
+          ctx.stroke();
+        }
+        for (const xWorld of [a, b]) {
+          const x = worldToScreen(xWorld, 0, cam).x;
+          ctx.beginPath();
+          ctx.moveTo(x, worldToScreen(0, 0, cam).y);
+          ctx.lineTo(x, worldToScreen(0, WORLD, cam).y);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    function drawPoly(points, fill, stroke = null) {
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+      ctx.closePath();
+      ctx.fillStyle = fill;
+      ctx.fill();
+      if (stroke) {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+
+    function quadPoint(tl, tr, br, bl, u, v) {
+      const topX = tl.x + (tr.x - tl.x) * u;
+      const topY = tl.y + (tr.y - tl.y) * u;
+      const bottomX = bl.x + (br.x - bl.x) * u;
+      const bottomY = bl.y + (br.y - bl.y) * u;
+      return {
+        x: topX + (bottomX - topX) * v,
+        y: topY + (bottomY - topY) * v
+      };
+    }
+
+    function insetQuad(points, amount) {
+      const cx = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+      const cy = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+      return points.map(p => ({
+        x: p.x + (cx - p.x) * amount,
+        y: p.y + (cy - p.y) * amount
+      }));
+    }
+
+    function faceQuad(tl, tr, br, bl, u0, u1, v0, v1) {
+      return [
+        quadPoint(tl, tr, br, bl, u0, v0),
+        quadPoint(tl, tr, br, bl, u1, v0),
+        quadPoint(tl, tr, br, bl, u1, v1),
+        quadPoint(tl, tr, br, bl, u0, v1)
+      ];
+    }
+
+    function drawWindowOnFace(tl, tr, br, bl, u0, u1, v0, v1) {
+      const frame = faceQuad(tl, tr, br, bl, u0, u1, v0, v1);
+      drawPoly(frame, palette.frame, "rgba(70, 54, 38, 0.28)");
+
+      const glass = insetQuad(frame, 0.18);
+      drawPoly(glass, palette.glass);
+
+      const darkPane = faceQuad(tl, tr, br, bl, u0 + (u1 - u0) * 0.52, u1 - (u1 - u0) * 0.16, v0 + (v1 - v0) * 0.18, v1 - (v1 - v0) * 0.18);
+      drawPoly(darkPane, palette.glassDark);
+
+      const vDiv = faceQuad(tl, tr, br, bl, u0 + (u1 - u0) * 0.47, u0 + (u1 - u0) * 0.54, v0 + (v1 - v0) * 0.18, v1 - (v1 - v0) * 0.18);
+      const hDiv = faceQuad(tl, tr, br, bl, u0 + (u1 - u0) * 0.16, u1 - (u1 - u0) * 0.16, v0 + (v1 - v0) * 0.47, v0 + (v1 - v0) * 0.54);
+      drawPoly(vDiv, palette.frame);
+      drawPoly(hDiv, palette.frame);
+    }
+
+    function drawBuilding(baseX, baseY, size, house, cam) {
+      const inset = 5;
+      const x = baseX + inset;
+      const y = baseY + inset;
+      const w = size - inset * 2;
+      const h = size - inset * 2;
+      const floors = house.floors;
+      const rise = 16 + floors * 5.5;
+      const roofColor = house.police ? palette.policeRoof : palette.roof[house.colorIndex];
+      const rightColor = house.police ? palette.policeFace : palette.rightFace[house.colorIndex];
+      const bottomColor = house.police ? "#35699f" : palette.bottomFace[house.colorIndex];
+
+      const a = worldToScreen(x, y, cam);
+      const b = worldToScreen(x + w, y, cam);
+      const c = worldToScreen(x + w, y + h, cam);
+      const d = worldToScreen(x, y + h, cam);
+      const hx = -rise * 0.42 * cam.scale;
+      const hy = -rise * 0.72 * cam.scale;
+      const at = { x: a.x + hx, y: a.y + hy };
+      const bt = { x: b.x + hx, y: b.y + hy };
+      const ct = { x: c.x + hx, y: c.y + hy };
+      const dt = { x: d.x + hx, y: d.y + hy };
+
+      const shadowOffset = 7 * cam.scale;
+      drawPoly([
+        { x: a.x + shadowOffset, y: a.y + shadowOffset },
+        { x: b.x + shadowOffset, y: b.y + shadowOffset },
+        { x: c.x + shadowOffset * 1.7, y: c.y + shadowOffset * 1.5 },
+        { x: d.x + shadowOffset * 1.3, y: d.y + shadowOffset * 1.8 }
+      ], palette.shadow);
+
+      const southFace = [dt, ct, c, d];
+      const eastFace = [bt, ct, c, b];
+      drawPoly(southFace, bottomColor, "rgba(67, 42, 29, 0.24)");
+      drawPoly(eastFace, rightColor, "rgba(67, 42, 29, 0.24)");
+
+      for (let row = 0; row < floors; row++) {
+        const v0 = (row + 0.18) / floors;
+        const v1 = (row + 0.68) / floors;
+        drawWindowOnFace(dt, ct, c, d, 0.18, 0.34, v0, v1);
+        drawWindowOnFace(dt, ct, c, d, 0.62, 0.78, v0, v1);
+        drawWindowOnFace(bt, ct, c, b, 0.18, 0.34, v0, v1);
+        drawWindowOnFace(bt, ct, c, b, 0.60, 0.76, v0, v1);
+      }
+
+      drawPoly([at, bt, ct, dt], roofColor, "rgba(65, 43, 30, 0.48)");
+
+      ctx.strokeStyle = "rgba(255, 231, 178, 0.22)";
+      ctx.lineWidth = Math.max(1, cam.scale * 0.8);
+      ctx.beginPath();
+      ctx.moveTo(at.x, at.y);
+      ctx.lineTo(bt.x, bt.y);
+      ctx.lineTo(ct.x, ct.y);
+      ctx.lineTo(dt.x, dt.y);
+      ctx.closePath();
+      ctx.stroke();
+
+      if (house.police) {
+        const signP = quadPoint(at, bt, ct, dt, 0.5, 0.52);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = `${Math.max(9, 14 * cam.scale)}px ui-monospace, monospace`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("P", signP.x, signP.y);
+      }
+    }
+
+    function drawBlock(block, cam) {
+      const x = blockWorldX(block.gx);
+      const y = blockWorldY(block.gy);
+      if (!rectVisible(x - 20, y - 20, BLOCK + 70, BLOCK + 70, cam)) return;
+
+      drawWorldRect(x - 9, y - 9, BLOCK + 18, BLOCK + 18, cam, palette.sidewalk);
+      drawWorldRect(x + HOUSE - 4, y + HOUSE - 4, HOUSE + 8, HOUSE + 8, cam, palette.courtyard);
+
+      ctx.strokeStyle = "rgba(255, 246, 217, 0.42)";
+      ctx.lineWidth = Math.max(1, 1.2 * cam.scale);
+      const p = worldToScreen(x - 9, y - 9, cam);
+      ctx.strokeRect(p.x, p.y, (BLOCK + 18) * cam.scale, (BLOCK + 18) * cam.scale);
+
+      drawWorldRect(x + 8, y + 8, BLOCK - 16, 7, cam, palette.sidewalkLight);
+      drawWorldRect(x + 8, y + BLOCK - 15, BLOCK - 16, 7, cam, palette.sidewalkLight);
+      drawWorldRect(x + 8, y + 8, 7, BLOCK - 16, cam, palette.sidewalkLight);
+      drawWorldRect(x + BLOCK - 15, y + 8, 7, BLOCK - 16, cam, palette.sidewalkLight);
+
+      for (const house of block.houses) {
+        drawBuilding(x + house.hx * HOUSE, y + house.hy * HOUSE, HOUSE, house, cam);
+      }
+    }
+
+    function drawPedestrians(cam) {
+      for (const ped of pedestrians) {
+        const [x, y] = pedestrianPosition(ped);
+        if (!rectVisible(x - 5, y - 5, 10, 10, cam, 30)) continue;
+        const p = worldToScreen(x, y, cam);
+        ctx.fillStyle = "rgba(30, 22, 18, 0.22)";
+        ctx.beginPath();
+        ctx.ellipse(p.x + 2 * cam.scale, p.y + 3 * cam.scale, 3 * cam.scale, 2 * cam.scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = ped.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, Math.max(2.2, 3.2 * cam.scale), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function drawCar(car, cam, isPlayer = false) {
+      if (!rectVisible(car.x - 35, car.y - 35, 70, 70, cam, 50)) return;
+      const p = worldToScreen(car.x, car.y, cam);
+      const scale = cam.scale;
+      const length = (car.length || player.length) * scale;
+      const width = (car.width || player.width) * scale;
+
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(car.angle);
+      ctx.fillStyle = "rgba(0, 0, 0, 0.26)";
+      ctx.fillRect(-length / 2 + 2 * scale, -width / 2 + 3 * scale, length, width);
+
+      ctx.fillStyle = isPlayer ? "#f1c343" : car.color;
+      ctx.beginPath();
+      ctx.moveTo(length / 2, 0);
+      ctx.lineTo(length * 0.28, -width / 2);
+      ctx.lineTo(-length * 0.42, -width / 2);
+      ctx.lineTo(-length / 2, -width * 0.3);
+      ctx.lineTo(-length / 2, width * 0.3);
+      ctx.lineTo(-length * 0.42, width / 2);
+      ctx.lineTo(length * 0.28, width / 2);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = "#bfe4ed";
+      ctx.fillRect(-length * 0.05, -width * 0.36, length * 0.26, width * 0.72);
+      ctx.fillStyle = "#1e2527";
+      ctx.fillRect(-length * 0.36, -width * 0.58, length * 0.18, width * 0.18);
+      ctx.fillRect(-length * 0.36, width * 0.4, length * 0.18, width * 0.18);
+      ctx.fillRect(length * 0.25, -width * 0.58, length * 0.18, width * 0.18);
+      ctx.fillRect(length * 0.25, width * 0.4, length * 0.18, width * 0.18);
+
+      ctx.fillStyle = "#fff8b3";
+      ctx.fillRect(length / 2 - 2 * scale, -width * 0.34, 2 * scale, 3 * scale);
+      ctx.fillRect(length / 2 - 2 * scale, width * 0.16, 2 * scale, 3 * scale);
+
+      if (isPlayer) {
+        ctx.fillStyle = "#d33a32";
+        ctx.fillRect(length / 2 - 1.5 * scale, -width * 0.2, 1.5 * scale, width * 0.4);
+      }
+
+      if (car.isPolice) {
+        const blink = Math.floor(performance.now() / 160) % 2;
+        ctx.fillStyle = blink ? "#e92828" : "#3a65ff";
+        ctx.fillRect(-2 * scale, -width * 0.42, 4 * scale, width * 0.42);
+        ctx.fillStyle = blink ? "#3a65ff" : "#e92828";
+        ctx.fillRect(-2 * scale, 0, 4 * scale, width * 0.42);
+      }
+
+      ctx.restore();
+    }
+
+    function draw(cam) {
+      drawRoads(cam);
+
+      const minGX = clamp(Math.floor((cam.x - cam.w / (2 * cam.scale) - ROAD) / CELL) - 1, 0, GRID - 1);
+      const maxGX = clamp(Math.ceil((cam.x + cam.w / (2 * cam.scale) - ROAD) / CELL) + 1, 0, GRID - 1);
+      const minGY = clamp(Math.floor((cam.y - cam.h / (2 * cam.scale) - ROAD) / CELL) - 1, 0, GRID - 1);
+      const maxGY = clamp(Math.ceil((cam.y + cam.h / (2 * cam.scale) - ROAD) / CELL) + 1, 0, GRID - 1);
+
+      for (let gy = minGY; gy <= maxGY; gy++) {
+        for (let gx = minGX; gx <= maxGX; gx++) {
+          drawBlock(blockAt(gx, gy), cam);
+        }
+      }
+
+      drawPedestrians(cam);
+
+      for (const car of cars) drawCar(car, cam);
+      drawCar(player, cam, true);
+    }
+
+    function updateHud() {
+      speedEl.textContent = "Speed " + Math.round(Math.abs(player.speed));
+      wantedEl.textContent = "Wanted " + (wantedLevel ? "★".repeat(wantedLevel) : "-");
+      roundEl.textContent = "Round " + round;
+    }
+
+    function frame(now) {
+      const dt = Math.min(0.05, (now - lastTime) / 1000 || 0);
+      lastTime = now;
+      update(dt);
+      const cam = createCamera();
+      draw(cam);
+      updateHud();
+      requestAnimationFrame(frame);
+    }
+
+    window.addEventListener("resize", resize);
+    window.addEventListener("keydown", event => {
+      if (event.key.startsWith("Arrow")) {
+        event.preventDefault();
+        keys.add(event.key);
+      }
+    });
+    window.addEventListener("keyup", event => {
+      if (event.key.startsWith("Arrow")) keys.delete(event.key);
+    });
+
+    for (const button of document.querySelectorAll(".control")) {
+      const key = button.dataset.key;
+      const press = event => {
+        event.preventDefault();
+        keys.add(key);
+        button.classList.add("active");
+      };
+      const release = event => {
+        event.preventDefault();
+        keys.delete(key);
+        button.classList.remove("active");
+      };
+      button.addEventListener("pointerdown", press);
+      button.addEventListener("pointerup", release);
+      button.addEventListener("pointercancel", release);
+      button.addEventListener("pointerleave", release);
+    }
+
+    createBlocks();
+    createPedestrians();
+    placePlayer();
+    createTraffic();
+    resize();
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>

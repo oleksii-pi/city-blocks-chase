@@ -517,6 +517,10 @@
         this.fromIY = 0;
         this.toIX = 1;
         this.toIY = 0;
+        this.pushX = 0;
+        this.pushY = 0;
+        this.pushVX = 0;
+        this.pushVY = 0;
 
         for (let attempt = 0; attempt < 100; attempt++) {
           const ix = randInt(0, GRID);
@@ -532,16 +536,61 @@
           this.lastDy = dy;
           this.progress = 0.06 + Math.random() * 0.88;
           this.refreshPosition();
+          this.angle = this.targetAngle;
           const clear = existing.every(car => Math.hypot(car.x - this.x, car.y - this.y) > 48);
           if (clear) return;
         }
+        this.angle = this.targetAngle;
       }
 
       refreshPosition() {
         const [x, y] = lanePosWithLateral(this.fromIX, this.fromIY, this.toIX, this.toIY, this.progress, this.lateralOffset);
-        this.x = x;
-        this.y = y;
-        this.angle = angleTo(this.toIX - this.fromIX, this.toIY - this.fromIY);
+        this.x = x + this.pushX;
+        this.y = y + this.pushY;
+        this.targetAngle = angleTo(this.toIX - this.fromIX, this.toIY - this.fromIY);
+        if (this.angle === undefined) this.angle = this.targetAngle;
+      }
+
+      updatePush(dt) {
+        if (!this.pushX && !this.pushY && !this.pushVX && !this.pushVY) return;
+        this.pushX += this.pushVX * dt;
+        this.pushY += this.pushVY * dt;
+        const friction = Math.exp(-4 * dt);
+        this.pushVX *= friction;
+        this.pushVY *= friction;
+        const recovery = Math.exp(-2.8 * dt);
+        this.pushX *= recovery;
+        this.pushY *= recovery;
+        const max = 32;
+        const mag = Math.hypot(this.pushX, this.pushY);
+        if (mag > max) {
+          this.pushX = this.pushX / mag * max;
+          this.pushY = this.pushY / mag * max;
+        }
+        if (Math.abs(this.pushX) < 0.1) this.pushX = 0;
+        if (Math.abs(this.pushY) < 0.1) this.pushY = 0;
+        if (Math.abs(this.pushVX) < 0.5) this.pushVX = 0;
+        if (Math.abs(this.pushVY) < 0.5) this.pushVY = 0;
+      }
+
+      updateAngle(dt) {
+        if (this.targetAngle === undefined) return;
+        let diff = this.targetAngle - this.angle;
+        while (diff > Math.PI) diff -= 2 * Math.PI;
+        while (diff < -Math.PI) diff += 2 * Math.PI;
+        const maxRate = 6.5;
+        if (diff > 0) this.angle += Math.min(diff, maxRate * dt);
+        else this.angle += Math.max(diff, -maxRate * dt);
+      }
+
+      angleAlignFactor() {
+        if (this.targetAngle === undefined) return 1;
+        let diff = this.targetAngle - this.angle;
+        while (diff > Math.PI) diff -= 2 * Math.PI;
+        while (diff < -Math.PI) diff += 2 * Math.PI;
+        const absDiff = Math.abs(diff);
+        if (absDiff < 0.3) return 1;
+        return Math.max(0.25, 1 - (absDiff - 0.3) * 0.55);
       }
 
       sameSegment(other) {
@@ -666,11 +715,54 @@
         return false;
       }
 
+      tryUTurn(allCars, player) {
+        if (this.chasing) return false;
+        if (this.blockedTime < 1.4) return false;
+        if (this.progress < 0.18 || this.progress > 0.78) return false;
+
+        for (const other of allCars) {
+          if (other === this) continue;
+          if (other.sameTrafficLane && other.sameTrafficLane(this) && other.progress < this.progress) return false;
+        }
+
+        const newFromIX = this.toIX;
+        const newFromIY = this.toIY;
+        const newToIX = this.fromIX;
+        const newToIY = this.fromIY;
+        const newProgress = 1 - this.progress;
+
+        for (const lookAhead of [0, 0.1, 0.22, 0.34]) {
+          const t = Math.min(0.96, newProgress + lookAhead);
+          const [x, y] = lanePosWithLateral(newFromIX, newFromIY, newToIX, newToIY, t, 0);
+          if (Math.hypot(player.x - x, player.y - y) < 36) return false;
+          for (const other of allCars) {
+            if (other === this) continue;
+            if (Math.hypot(other.x - x, other.y - y) < 32) return false;
+          }
+        }
+
+        this.lastDx = newToIX - newFromIX;
+        this.lastDy = newToIY - newFromIY;
+        this.fromIX = newFromIX;
+        this.fromIY = newFromIY;
+        this.toIX = newToIX;
+        this.toIY = newToIY;
+        this.progress = newProgress;
+        this.lateralOffset = 0;
+        this.targetLateral = 0;
+        this.overtakeTimer = 0;
+        this.blockedTime = 0;
+        this.refreshPosition();
+        return true;
+      }
+
       update(dt, allCars, player) {
         if (this.yieldTimer > 0) this.yieldTimer -= dt;
         if (this.overtakeTimer > 0) this.overtakeTimer -= dt;
+        this.updatePush(dt);
         const speed = this.chasing ? this.chaseSpeed : this.baseSpeed;
-        const progressStep = speed * dt / CELL;
+        const alignFactor = this.angleAlignFactor();
+        const progressStep = speed * dt / CELL * alignFactor;
         const info = this.blockedInfo(allCars, player);
         const blocked = info.blocked;
         this.blockedTime = blocked ? this.blockedTime + dt : 0;
@@ -678,7 +770,10 @@
         const midBlockJam = blocked && !canPass && !this.chasing && this.progress > 0.14 && this.progress < 0.82;
         const impatient = this.blockedTime > (this.isPolice ? 0.45 : 0.9) && !midBlockJam;
 
-        if (blocked && this.tryEscapeFromIntersection(allCars, player)) return;
+        if (blocked && (this.tryEscapeFromIntersection(allCars, player) || this.tryUTurn(allCars, player))) {
+          this.updateAngle(dt);
+          return;
+        }
 
         if (canPass && this.blockedTime > 0.35) {
           this.overtakeTimer = 1.25;
@@ -721,6 +816,7 @@
           this.pickNextDirection(player);
         }
         this.refreshPosition();
+        this.updateAngle(dt);
       }
 
       pickNextDirection(player) {
@@ -905,15 +1001,25 @@
       if (a === player || b === player) {
         const car = a === player ? b : a;
         const impactSpeed = Math.abs(player.speed);
-        if (a === player) {
-          player.x -= nx * overlap * 0.7;
-          player.y -= ny * overlap * 0.7;
-        } else {
-          player.x += nx * overlap * 0.7;
-          player.y += ny * overlap * 0.7;
+        const dirX = a === player ? nx : -nx;
+        const dirY = a === player ? ny : -ny;
+        const playerShare = 0.35;
+        const carShare = 0.65;
+        player.x -= dirX * overlap * playerShare;
+        player.y -= dirY * overlap * playerShare;
+        car.pushX += dirX * overlap * carShare;
+        car.pushY += dirY * overlap * carShare;
+        const playerVx = Math.cos(player.angle) * player.speed;
+        const playerVy = Math.sin(player.angle) * player.speed;
+        const dotV = playerVx * dirX + playerVy * dirY;
+        if (dotV > 0) {
+          const transfer = 0.55;
+          car.pushVX += dotV * transfer * dirX;
+          car.pushVY += dotV * transfer * dirY;
         }
-        player.speed *= 0.45;
-        car.yieldTimer = 0.25;
+        car.refreshPosition();
+        player.speed *= 0.5;
+        car.yieldTimer = 0.4;
         if (impactSpeed > 40) bumpWanted();
         return true;
       }

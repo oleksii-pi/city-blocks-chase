@@ -30,7 +30,11 @@
     }
 
     body.game-over canvas {
-      animation: gameOverFade 2s linear forwards;
+      filter: grayscale(1) brightness(0.72);
+    }
+
+    body.game-over.game-over-fade canvas {
+      animation: gameOverFade 1.4s linear forwards;
     }
 
     @keyframes gameOverFade {
@@ -39,14 +43,22 @@
       }
 
       to {
-        filter: grayscale(1) brightness(0.34);
+        filter: grayscale(1) brightness(0.18);
       }
     }
 
-    .hud {
+    .dashboard {
       position: fixed;
       top: max(12px, env(safe-area-inset-top));
       left: max(12px, env(safe-area-inset-left));
+      display: grid;
+      gap: 8px;
+      pointer-events: none;
+      user-select: none;
+      z-index: 2;
+    }
+
+    .hud {
       display: grid;
       gap: 4px;
       min-width: 170px;
@@ -56,8 +68,21 @@
       background: rgba(24, 28, 25, 0.78);
       box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
       backdrop-filter: blur(5px);
-      pointer-events: none;
-      user-select: none;
+    }
+
+    .minimap {
+      display: none;
+      width: 200px;
+      height: 200px;
+      border: 1px solid rgba(255, 244, 210, 0.28);
+      border-radius: 8px;
+      background: rgba(24, 28, 25, 0.82);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+      backdrop-filter: blur(5px);
+    }
+
+    .minimap.visible {
+      display: block;
     }
 
     .hud strong {
@@ -177,12 +202,15 @@
 <body>
   <canvas id="game" aria-label="Top-down city driving game"></canvas>
 
-  <div class="hud">
-    <strong>Survive the Streets</strong>
-    <span id="speed">Speed 0</span>
-    <span id="wanted">Chasers 0</span>
-    <span id="survival">Time 0:00</span>
-    <span>Arrow keys or buttons</span>
+  <div class="dashboard">
+    <div class="hud">
+      <strong>Survive the Streets</strong>
+      <span id="speed">Speed 0</span>
+      <span id="wanted">Chasers 0</span>
+      <span id="survival">Time 0:00</span>
+      <span>Arrow keys or buttons</span>
+    </div>
+    <canvas id="minimap" class="minimap" width="200" height="200" aria-label="Police chase minimap"></canvas>
   </div>
 
   <div id="message" class="message"></div>
@@ -203,7 +231,10 @@
     const wantedEl = document.getElementById("wanted");
     const survivalEl = document.getElementById("survival");
     const messageEl = document.getElementById("message");
+    const minimapCanvas = document.getElementById("minimap");
+    const minimapCtx = minimapCanvas.getContext("2d");
 
+    const MINIMAP_SIZE = 200;
     const GRID = 16;
     const ROAD = 72;
     const BLOCK = 180;
@@ -212,13 +243,16 @@
     const HOUSE = BLOCK / 3;
     const LANE_WIDTH = ROAD / 2;
     const HOUSE_CELLS = [[0, 0], [1, 0], [2, 0], [0, 1], [2, 1], [0, 2], [1, 2], [2, 2]];
-    const TOTAL_CARS = 100;
-    const POLICE_COUNT = 8;
+    const TOTAL_CARS = 200;
+    const POLICE_COUNT = 20;
     const TURN_ARC = 0.2;
     const HIT_STOP_SECONDS = 10;
     const STUCK_ESCAPE_SECONDS = 10;
-    const CHASE_LOST_DISTANCE = 7 * CELL;
-    const GAME_OVER_SECONDS = 2;
+    const CHASE_CLOSE_DISTANCE = 3 * CELL;
+    const CHASE_LOST_DISTANCE = 5 * CELL;
+    const GAME_OVER_SPLASH_SECONDS = 2;
+    const GAME_OVER_FADE_SECONDS = 1.4;
+    const GAME_OVER_SECONDS = GAME_OVER_SPLASH_SECONDS + GAME_OVER_FADE_SECONDS;
     const keys = new Set();
 
     const palette = {
@@ -264,6 +298,8 @@
     let wantedLevel = 0;
     let survivalTime = 0;
     let gameOverTimer = 0;
+    let gameOverStartedAt = 0;
+    let gameOverFading = false;
     let lastTime = performance.now();
 
     function resize() {
@@ -271,6 +307,10 @@
       canvas.width = Math.floor(window.innerWidth * ratio);
       canvas.height = Math.floor(window.innerHeight * ratio);
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+      minimapCanvas.width = Math.floor(MINIMAP_SIZE * ratio);
+      minimapCanvas.height = Math.floor(MINIMAP_SIZE * ratio);
+      minimapCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
     }
 
     function rand(seed) {
@@ -566,7 +606,8 @@
         this.baseSpeed = isPolice ? 92 : 62 + Math.random() * 36;
         this.chaseSpeed = 154;
         this.chasing = false;
-        this.hitByPlayer = false;
+        this.chaseClosedIn = false;
+        this.playerHitCooldown = 0;
         this.blockedTime = 0;
         this.stuckTime = 0;
         this.yieldTimer = 0;
@@ -577,7 +618,7 @@
         this.hitStopTimer = 0;
         this.lateralOffset = 0;
         this.targetLateral = 0;
-        this.blocksUntilTurn = randInt(4, 5);
+        this.blocksUntilTurn = randInt(2, 5);
         this.turnSide = Math.random() < 0.5 ? -1 : 1;
         this.lastDx = 1;
         this.lastDy = 0;
@@ -920,6 +961,8 @@
       }
 
       update(dt, allCars, player) {
+        if (this.playerHitCooldown > 0) this.playerHitCooldown = Math.max(0, this.playerHitCooldown - dt);
+
         if (this.hitStopTimer > 0) {
           this.hitStopTimer = Math.max(0, this.hitStopTimer - dt);
           this.yieldTimer = Math.max(this.yieldTimer, this.hitStopTimer);
@@ -1116,8 +1159,11 @@
       wantedLevel = 0;
       survivalTime = 0;
       gameOverTimer = 0;
+      gameOverStartedAt = 0;
+      gameOverFading = false;
       keys.clear();
       document.body.classList.remove("game-over");
+      document.body.classList.remove("game-over-fade");
       messageEl.classList.remove("game-over");
       messageEl.style.display = "none";
       messageEl.textContent = "";
@@ -1131,10 +1177,13 @@
       if (gameOverTimer > 0) return;
       player.speed = 0;
       gameOverTimer = GAME_OVER_SECONDS;
-      messageEl.textContent = "Game over!";
+      gameOverStartedAt = performance.now();
+      gameOverFading = false;
+      messageEl.textContent = "Game Over!";
       messageEl.classList.add("game-over");
       messageEl.style.display = "block";
       document.body.classList.add("game-over");
+      document.body.classList.remove("game-over-fade");
     }
 
     function activateNearestPolice() {
@@ -1150,6 +1199,7 @@
       }
       if (!best) return false;
       best.chasing = true;
+      best.chaseClosedIn = false;
       best.hitStopTimer = 0;
       best.yieldTimer = 0;
       best.rightOfWayTimer = 0;
@@ -1160,8 +1210,6 @@
     }
 
     function reportPlayerHit(car) {
-      if (car.isPolice || car.hitByPlayer) return;
-      car.hitByPlayer = true;
       if (activateNearestPolice()) syncWantedLevel();
     }
 
@@ -1169,8 +1217,11 @@
       let changed = false;
       for (const police of policeCars) {
         if (!police.chasing) continue;
-        if (Math.hypot(police.x - player.x, police.y - player.y) < CHASE_LOST_DISTANCE) continue;
+        const distance = Math.hypot(police.x - player.x, police.y - player.y);
+        if (distance <= CHASE_CLOSE_DISTANCE) police.chaseClosedIn = true;
+        if (!police.chaseClosedIn || distance <= CHASE_LOST_DISTANCE) continue;
         police.chasing = false;
+        police.chaseClosedIn = false;
         police.overtakeTimer = 0;
         police.emergencyTimer = 0;
         police.targetLateral = 0;
@@ -1280,6 +1331,10 @@
         const playerVx = Math.cos(player.angle) * player.speed;
         const playerVy = Math.sin(player.angle) * player.speed;
         const dotV = playerVx * dirX + playerVy * dirY;
+        const carV = aiMotionVector(car);
+        const policeTowardPlayer = carV.x * -dirX + carV.y * -dirY;
+        const closingFromPolice = (carV.x - playerVx) * -dirX + (carV.y - playerVy) * -dirY;
+        const policeCapturedPlayer = car.isPolice && car.chasing && policeTowardPlayer > 38 && closingFromPolice > 18;
         const hitForce = Math.max(30, Math.abs(dotV));
         if (dotV > 0) {
           const transfer = 0.72;
@@ -1288,16 +1343,19 @@
         }
         car.refreshPosition();
         player.speed *= impactSpeed > 90 ? -0.12 : 0.38;
-        car.hitStopTimer = HIT_STOP_SECONDS;
-        car.yieldTimer = HIT_STOP_SECONDS;
-        car.blockedTime = 0;
-        car.stuckTime = 0;
-        car.overtakeTimer = 0;
-        car.emergencyTimer = 0;
-        car.reverseTimer = 0;
-        if (car.isPolice && car.chasing) {
+        if (!car.isPolice || !car.chasing) {
+          car.hitStopTimer = HIT_STOP_SECONDS;
+          car.yieldTimer = HIT_STOP_SECONDS;
+          car.blockedTime = 0;
+          car.stuckTime = 0;
+          car.overtakeTimer = 0;
+          car.emergencyTimer = 0;
+          car.reverseTimer = 0;
+        }
+        if (policeCapturedPlayer) {
           startGameOver();
-        } else if (dotV > 16) {
+        } else if (dotV > 16 && car.playerHitCooldown <= 0) {
+          car.playerHitCooldown = 0.9;
           reportPlayerHit(car);
         }
         return true;
@@ -1378,8 +1436,13 @@
 
     function update(dt) {
       if (gameOverTimer > 0) {
-        gameOverTimer -= dt;
-        if (gameOverTimer <= 0) restartGame();
+        const elapsed = (performance.now() - gameOverStartedAt) / 1000;
+        gameOverTimer = Math.max(0, GAME_OVER_SECONDS - elapsed);
+        if (!gameOverFading && elapsed >= GAME_OVER_SPLASH_SECONDS) {
+          gameOverFading = true;
+          document.body.classList.add("game-over-fade");
+        }
+        if (elapsed >= GAME_OVER_SECONDS) restartGame();
         return;
       }
 
@@ -1730,6 +1793,53 @@
       drawCar(player, cam, true);
     }
 
+    function drawMinimapDot(mapCtx, x, y, radius, fill, stroke = null) {
+      mapCtx.beginPath();
+      mapCtx.arc(x, y, radius, 0, Math.PI * 2);
+      mapCtx.fillStyle = fill;
+      mapCtx.fill();
+      if (stroke) {
+        mapCtx.strokeStyle = stroke;
+        mapCtx.lineWidth = 1;
+        mapCtx.stroke();
+      }
+    }
+
+    function drawMinimap() {
+      const visible = wantedLevel > 0;
+      minimapCanvas.classList.toggle("visible", visible);
+      if (!visible) return;
+
+      const scale = MINIMAP_SIZE / WORLD;
+      minimapCtx.clearRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+      minimapCtx.fillStyle = "#20252a";
+      minimapCtx.fillRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+
+      minimapCtx.fillStyle = "#bca86f";
+      minimapCtx.strokeStyle = "rgba(255, 244, 210, 0.22)";
+      minimapCtx.lineWidth = 1;
+      for (const block of blocks) {
+        const x = blockWorldX(block.gx) * scale;
+        const y = blockWorldY(block.gy) * scale;
+        const size = BLOCK * scale;
+        minimapCtx.fillRect(x, y, size, size);
+        minimapCtx.strokeRect(x, y, size, size);
+      }
+
+      for (const police of policeCars) {
+        drawMinimapDot(
+          minimapCtx,
+          police.x * scale,
+          police.y * scale,
+          police.chasing ? 3.2 : 2.4,
+          "#e33232",
+          police.chasing ? "#fff2cf" : null
+        );
+      }
+
+      drawMinimapDot(minimapCtx, player.x * scale, player.y * scale, 3.5, "#f1c343", "#2b2111");
+    }
+
     function updateHud() {
       const minutes = Math.floor(survivalTime / 60);
       const seconds = Math.floor(survivalTime % 60).toString().padStart(2, "0");
@@ -1745,6 +1855,7 @@
       const cam = createCamera();
       draw(cam);
       updateHud();
+      drawMinimap();
       requestAnimationFrame(frame);
     }
 

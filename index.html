@@ -1726,6 +1726,10 @@
       drawPoly(hDiv, palette.frame);
     }
 
+    function buildingRise(house) {
+      return 16 + house.floors * 5.5;
+    }
+
     function drawBuilding(baseX, baseY, size, house, cam) {
       const inset = 5;
       const x = baseX + inset;
@@ -1733,7 +1737,7 @@
       const w = size - inset * 2;
       const h = size - inset * 2;
       const floors = house.floors;
-      const rise = 16 + floors * 5.5;
+      const rise = buildingRise(house);
       const roofColor = house.police ? palette.policeRoof : palette.roof[house.colorIndex];
       const rightColor = house.police ? palette.policeFace : palette.rightFace[house.colorIndex];
       const bottomColor = house.police ? "#35699f" : palette.bottomFace[house.colorIndex];
@@ -1793,11 +1797,16 @@
       }
     }
 
-    function drawBlock(block, cam) {
+    function blockVisible(block, cam) {
       const x = blockWorldX(block.gx);
       const y = blockWorldY(block.gy);
-      if (!rectVisible(x - 20, y - 20, BLOCK + 70, BLOCK + 70, cam)) return;
+      return rectVisible(x - 55, y - 70, BLOCK + 125, BLOCK + 140, cam);
+    }
 
+    function drawBlockGround(block, cam) {
+      if (!blockVisible(block, cam)) return;
+      const x = blockWorldX(block.gx);
+      const y = blockWorldY(block.gy);
       drawWorldRect(x - 9, y - 9, BLOCK + 18, BLOCK + 18, cam, palette.sidewalk);
       drawWorldRect(x + HOUSE - 4, y + HOUSE - 4, HOUSE + 8, HOUSE + 8, cam, palette.courtyard);
 
@@ -1810,26 +1819,36 @@
       drawWorldRect(x + 8, y + BLOCK - 15, BLOCK - 16, 7, cam, palette.sidewalkLight);
       drawWorldRect(x + 8, y + 8, 7, BLOCK - 16, cam, palette.sidewalkLight);
       drawWorldRect(x + BLOCK - 15, y + 8, 7, BLOCK - 16, cam, palette.sidewalkLight);
+    }
 
+    function queueBlockBuildings(block, renderables, cam) {
+      if (!blockVisible(block, cam)) return;
+      const x = blockWorldX(block.gx);
+      const y = blockWorldY(block.gy);
       for (const house of block.houses) {
-        drawBuilding(x + house.hx * HOUSE, y + house.hy * HOUSE, HOUSE, house, cam);
+        const baseX = x + house.hx * HOUSE;
+        const baseY = y + house.hy * HOUSE;
+        const rise = buildingRise(house);
+        if (!rectVisible(baseX - rise * 0.48, baseY - rise * 0.78, HOUSE + rise * 0.6, HOUSE + rise * 0.9, cam, 50)) continue;
+        renderables.push({
+          depth: baseY + HOUSE - 5,
+          order: renderables.length,
+          draw: () => drawBuilding(baseX, baseY, HOUSE, house, cam)
+        });
       }
     }
 
-    function drawPedestrians(cam) {
-      for (const ped of pedestrians) {
-        const [x, y] = pedestrianPosition(ped);
-        if (!rectVisible(x - 5, y - 5, 10, 10, cam, 30)) continue;
-        const p = worldToScreen(x, y, cam);
-        ctx.fillStyle = "rgba(30, 22, 18, 0.22)";
-        ctx.beginPath();
-        ctx.ellipse(p.x + 2 * cam.scale, p.y + 3 * cam.scale, 3 * cam.scale, 2 * cam.scale, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = ped.color;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, Math.max(2.2, 3.2 * cam.scale), 0, Math.PI * 2);
-        ctx.fill();
-      }
+    function drawPedestrian(ped, cam) {
+      const [x, y] = pedestrianPosition(ped);
+      const p = worldToScreen(x, y, cam);
+      ctx.fillStyle = "rgba(30, 22, 18, 0.22)";
+      ctx.beginPath();
+      ctx.ellipse(p.x + 2 * cam.scale, p.y + 3 * cam.scale, 3 * cam.scale, 2 * cam.scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = ped.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(2.2, 3.2 * cam.scale), 0, Math.PI * 2);
+      ctx.fill();
     }
 
     function drawCar(car, cam, isPlayer = false) {
@@ -1887,6 +1906,7 @@
 
     function draw(cam) {
       drawRoads(cam);
+      const renderables = [];
 
       const minGX = clamp(Math.floor((cam.x - cam.w / (2 * cam.scale) - ROAD) / CELL) - 1, 0, GRID - 1);
       const maxGX = clamp(Math.ceil((cam.x + cam.w / (2 * cam.scale) - ROAD) / CELL) + 1, 0, GRID - 1);
@@ -1895,14 +1915,38 @@
 
       for (let gy = minGY; gy <= maxGY; gy++) {
         for (let gx = minGX; gx <= maxGX; gx++) {
-          drawBlock(blockAt(gx, gy), cam);
+          const block = blockAt(gx, gy);
+          drawBlockGround(block, cam);
+          queueBlockBuildings(block, renderables, cam);
         }
       }
 
-      drawPedestrians(cam);
+      for (const ped of pedestrians) {
+        const [x, y] = pedestrianPosition(ped);
+        if (!rectVisible(x - 5, y - 5, 10, 10, cam, 30)) continue;
+        renderables.push({
+          depth: y + 4,
+          order: renderables.length,
+          draw: () => drawPedestrian(ped, cam)
+        });
+      }
 
-      for (const car of cars) drawCar(car, cam);
-      drawCar(player, cam, true);
+      for (const car of cars) {
+        if (!rectVisible(car.x - 35, car.y - 35, 70, 70, cam, 50)) continue;
+        renderables.push({
+          depth: car.y + (car.radius || 16),
+          order: renderables.length,
+          draw: () => drawCar(car, cam)
+        });
+      }
+      renderables.push({
+        depth: player.y + player.radius,
+        order: renderables.length,
+        draw: () => drawCar(player, cam, true)
+      });
+
+      renderables.sort((a, b) => a.depth - b.depth || a.order - b.order);
+      for (const item of renderables) item.draw();
     }
 
     function drawMinimapDot(mapCtx, x, y, radius, fill, stroke = null) {

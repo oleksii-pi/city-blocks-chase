@@ -250,6 +250,8 @@
     const STUCK_ESCAPE_SECONDS = 10;
     const CHASE_CLOSE_DISTANCE = 3 * CELL;
     const CHASE_LOST_DISTANCE = 5 * CELL;
+    const NO_CHASE_REST_SECONDS = 30;
+    const RANDOM_CHASE_MIN_DISTANCE = 3 * CELL;
     const GAME_OVER_SPLASH_SECONDS = 2;
     const GAME_OVER_FADE_SECONDS = 1.4;
     const GAME_OVER_SECONDS = GAME_OVER_SPLASH_SECONDS + GAME_OVER_FADE_SECONDS;
@@ -297,6 +299,7 @@
     let carSerial = 0;
     let wantedLevel = 0;
     let survivalTime = 0;
+    let noChaseTimer = 0;
     let gameOverTimer = 0;
     let gameOverStartedAt = 0;
     let gameOverFading = false;
@@ -1158,6 +1161,7 @@
     function restartGame() {
       wantedLevel = 0;
       survivalTime = 0;
+      noChaseTimer = 0;
       gameOverTimer = 0;
       gameOverStartedAt = 0;
       gameOverFading = false;
@@ -1186,6 +1190,19 @@
       document.body.classList.remove("game-over-fade");
     }
 
+    function activatePolice(police) {
+      police.chasing = true;
+      police.chaseClosedIn = false;
+      police.hitStopTimer = 0;
+      police.yieldTimer = 0;
+      police.rightOfWayTimer = 0;
+      police.overtakeTimer = 0;
+      police.emergencyTimer = 0;
+      police.reverseTimer = 0;
+      police.targetLateral = 0;
+      noChaseTimer = 0;
+    }
+
     function activateNearestPolice() {
       let best = null;
       let bestD = Infinity;
@@ -1198,14 +1215,18 @@
         }
       }
       if (!best) return false;
-      best.chasing = true;
-      best.chaseClosedIn = false;
-      best.hitStopTimer = 0;
-      best.yieldTimer = 0;
-      best.rightOfWayTimer = 0;
-      best.overtakeTimer = 0;
-      best.emergencyTimer = 0;
-      best.reverseTimer = 0;
+      activatePolice(best);
+      return true;
+    }
+
+    function activateRandomDistantPolice() {
+      const candidates = policeCars.filter(police => {
+        if (police.chasing) return false;
+        return Math.hypot(police.x - player.x, police.y - player.y) >= RANDOM_CHASE_MIN_DISTANCE;
+      });
+      if (!candidates.length) return false;
+
+      activatePolice(candidates[Math.floor(Math.random() * candidates.length)]);
       return true;
     }
 
@@ -1228,6 +1249,17 @@
         changed = true;
       }
       if (changed) syncWantedLevel();
+    }
+
+    function updateNoChaseTimer(dt) {
+      if (activeChaseCount() > 0) {
+        noChaseTimer = 0;
+        return;
+      }
+
+      noChaseTimer += dt;
+      if (noChaseTimer < NO_CHASE_REST_SECONDS) return;
+      if (activateRandomDistantPolice()) syncWantedLevel();
     }
 
     function updatePlayer(dt) {
@@ -1451,6 +1483,7 @@
       for (const car of cars) car.update(dt, cars, player);
       updatePoliceChases();
       resolveCollisions();
+      updateNoChaseTimer(dt);
 
       for (const ped of pedestrians) {
         ped.t += ped.speed * dt;

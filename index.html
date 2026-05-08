@@ -58,6 +58,46 @@
       z-index: 2;
     }
 
+    .scoreboard {
+      position: fixed;
+      top: max(12px, env(safe-area-inset-top));
+      left: 50%;
+      display: grid;
+      justify-items: center;
+      min-width: 190px;
+      padding: 10px 18px 12px;
+      border: 1px solid rgba(255, 244, 210, 0.24);
+      border-radius: 8px;
+      background: rgba(20, 23, 22, 0.76);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+      transform: translateX(-50%);
+      pointer-events: none;
+      user-select: none;
+      z-index: 2;
+    }
+
+    .scoreboard span {
+      color: #e8ddbf;
+      font-size: 12px;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .scoreboard strong {
+      color: #fff6d7;
+      font-size: clamp(44px, 8vw, 78px);
+      line-height: 0.95;
+      letter-spacing: 0;
+    }
+
+    .scoreboard em {
+      min-height: 14px;
+      color: #f1c343;
+      font-size: 12px;
+      font-style: normal;
+      line-height: 1;
+    }
+
     .hud {
       display: grid;
       gap: 4px;
@@ -213,6 +253,12 @@
     <canvas id="minimap" class="minimap" width="200" height="200" aria-label="Police chase minimap"></canvas>
   </div>
 
+  <div class="scoreboard" aria-live="polite">
+    <span>Hit Score</span>
+    <strong id="hitScore">0</strong>
+    <em id="hitBonus"></em>
+  </div>
+
   <div id="message" class="message"></div>
 
   <div class="controls" aria-label="Driving controls">
@@ -230,6 +276,8 @@
     const speedEl = document.getElementById("speed");
     const wantedEl = document.getElementById("wanted");
     const survivalEl = document.getElementById("survival");
+    const hitScoreEl = document.getElementById("hitScore");
+    const hitBonusEl = document.getElementById("hitBonus");
     const messageEl = document.getElementById("message");
     const minimapCanvas = document.getElementById("minimap");
     const minimapCtx = minimapCanvas.getContext("2d");
@@ -255,6 +303,7 @@
     const GAME_OVER_SPLASH_SECONDS = 2;
     const GAME_OVER_FADE_SECONDS = 1.4;
     const GAME_OVER_SECONDS = GAME_OVER_SPLASH_SECONDS + GAME_OVER_FADE_SECONDS;
+    const POLICE_FRONT_HIT_DOT = 0.55;
     const keys = new Set();
 
     const palette = {
@@ -298,6 +347,9 @@
     const blocks = [];
     let carSerial = 0;
     let wantedLevel = 0;
+    let hitScore = 0;
+    let hitCount = 0;
+    let lastHitPoints = 0;
     let survivalTime = 0;
     let noChaseTimer = 0;
     let gameOverTimer = 0;
@@ -1160,6 +1212,9 @@
 
     function restartGame() {
       wantedLevel = 0;
+      hitScore = 0;
+      hitCount = 0;
+      lastHitPoints = 0;
       survivalTime = 0;
       noChaseTimer = 0;
       gameOverTimer = 0;
@@ -1231,7 +1286,18 @@
     }
 
     function reportPlayerHit(car) {
+      lastHitPoints = activeChaseCount() + 1;
+      hitScore += lastHitPoints;
+      hitCount++;
       if (activateNearestPolice()) syncWantedLevel();
+    }
+
+    function playerHitPoliceFront(car, dirX, dirY, dotV) {
+      if (!car.isPolice || dotV <= 16) return false;
+      const carToPlayerX = -dirX;
+      const carToPlayerY = -dirY;
+      const frontDot = Math.cos(car.angle) * carToPlayerX + Math.sin(car.angle) * carToPlayerY;
+      return frontDot > POLICE_FRONT_HIT_DOT;
     }
 
     function updatePoliceChases() {
@@ -1367,6 +1433,7 @@
         const policeTowardPlayer = carV.x * -dirX + carV.y * -dirY;
         const closingFromPolice = (carV.x - playerVx) * -dirX + (carV.y - playerVy) * -dirY;
         const policeCapturedPlayer = car.isPolice && car.chasing && policeTowardPlayer > 38 && closingFromPolice > 18;
+        const policeFrontCrash = playerHitPoliceFront(car, dirX, dirY, dotV);
         const hitForce = Math.max(30, Math.abs(dotV));
         if (dotV > 0) {
           const transfer = 0.72;
@@ -1384,7 +1451,7 @@
           car.emergencyTimer = 0;
           car.reverseTimer = 0;
         }
-        if (policeCapturedPlayer) {
+        if (policeCapturedPlayer || policeFrontCrash) {
           startGameOver();
         } else if (dotV > 16 && car.playerHitCooldown <= 0) {
           car.playerHitCooldown = 0.9;
@@ -1879,6 +1946,8 @@
       speedEl.textContent = "Speed " + Math.round(Math.abs(player.speed));
       wantedEl.textContent = "Chasers " + wantedLevel;
       survivalEl.textContent = "Time " + minutes + ":" + seconds;
+      hitScoreEl.textContent = hitScore;
+      hitBonusEl.textContent = hitCount ? "Hits " + hitCount + "  +" + lastHitPoints : "";
     }
 
     function frame(now) {

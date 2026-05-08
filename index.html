@@ -29,6 +29,20 @@
       background: #6f8c5a;
     }
 
+    body.game-over canvas {
+      animation: gameOverFade 2s linear forwards;
+    }
+
+    @keyframes gameOverFade {
+      from {
+        filter: grayscale(1) brightness(0.72);
+      }
+
+      to {
+        filter: grayscale(1) brightness(0.34);
+      }
+    }
+
     .hud {
       position: fixed;
       top: max(12px, env(safe-area-inset-top));
@@ -75,6 +89,18 @@
       text-align: center;
       transform: translate(-50%, -50%);
       pointer-events: none;
+    }
+
+    .message.game-over {
+      min-width: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: #ffffff;
+      font-size: clamp(44px, 10vw, 118px);
+      letter-spacing: 0;
+      text-shadow: 0 8px 22px rgba(0, 0, 0, 0.55);
     }
 
     .controls {
@@ -152,10 +178,10 @@
   <canvas id="game" aria-label="Top-down city driving game"></canvas>
 
   <div class="hud">
-    <strong>City Blocks Chase</strong>
+    <strong>Survive the Streets</strong>
     <span id="speed">Speed 0</span>
-    <span id="wanted">Wanted -</span>
-    <span id="round">Round 1</span>
+    <span id="wanted">Chasers 0</span>
+    <span id="survival">Time 0:00</span>
     <span>Arrow keys or buttons</span>
   </div>
 
@@ -175,7 +201,7 @@
     const ctx = canvas.getContext("2d", { alpha: false });
     const speedEl = document.getElementById("speed");
     const wantedEl = document.getElementById("wanted");
-    const roundEl = document.getElementById("round");
+    const survivalEl = document.getElementById("survival");
     const messageEl = document.getElementById("message");
 
     const GRID = 16;
@@ -188,6 +214,11 @@
     const HOUSE_CELLS = [[0, 0], [1, 0], [2, 0], [0, 1], [2, 1], [0, 2], [1, 2], [2, 2]];
     const TOTAL_CARS = 100;
     const POLICE_COUNT = 8;
+    const TURN_ARC = 0.2;
+    const HIT_STOP_SECONDS = 10;
+    const STUCK_ESCAPE_SECONDS = 10;
+    const CHASE_LOST_DISTANCE = 7 * CELL;
+    const GAME_OVER_SECONDS = 2;
     const keys = new Set();
 
     const palette = {
@@ -231,9 +262,8 @@
     const blocks = [];
     let carSerial = 0;
     let wantedLevel = 0;
-    let round = 1;
-    let messageTimer = 0;
-    let wantedCooldown = 0;
+    let survivalTime = 0;
+    let gameOverTimer = 0;
     let lastTime = performance.now();
 
     function resize() {
@@ -258,6 +288,17 @@
 
     function clamp(v, min, max) {
       return Math.max(min, Math.min(max, v));
+    }
+
+    function smoothstep(t) {
+      t = clamp(t, 0, 1);
+      return t * t * (3 - 2 * t);
+    }
+
+    function normalizeAngle(angle) {
+      while (angle > Math.PI) angle -= 2 * Math.PI;
+      while (angle < -Math.PI) angle += 2 * Math.PI;
+      return angle;
     }
 
     function angleTo(dx, dy) {
@@ -301,6 +342,28 @@
       const [x, y] = lanePos(fromIX, fromIY, toIX, toIY, t);
       const [nx, ny] = laneNormal(toIX - fromIX, toIY - fromIY);
       return [x + nx * lateral, y + ny * lateral];
+    }
+
+    function curvedLanePose(fromIX, fromIY, toIX, toIY, progress, lateral, incomingDx, incomingDy) {
+      const dx = toIX - fromIX;
+      const dy = toIY - fromIY;
+      const turning = (incomingDx !== dx || incomingDy !== dy) && (incomingDx !== -dx || incomingDy !== -dy);
+      if (!turning || progress >= TURN_ARC) {
+        const [x, y] = lanePosWithLateral(fromIX, fromIY, toIX, toIY, progress, lateral);
+        return { x, y, angle: angleTo(dx, dy) };
+      }
+
+      const [cx, cy] = intersectionCenter(fromIX, fromIY);
+      const [inOx, inOy] = laneOffset(incomingDx, incomingDy);
+      const [startX, startY] = [cx + inOx, cy + inOy];
+      const [endX, endY] = lanePosWithLateral(fromIX, fromIY, toIX, toIY, TURN_ARC, lateral);
+      const t = smoothstep(progress / TURN_ARC);
+      const inv = 1 - t;
+      const x = inv * inv * startX + 2 * inv * t * cx + t * t * endX;
+      const y = inv * inv * startY + 2 * inv * t * cy + t * t * endY;
+      const tx = 2 * inv * (cx - startX) + 2 * t * (endX - cx);
+      const ty = 2 * inv * (cy - startY) + 2 * t * (endY - cy);
+      return { x, y, angle: angleTo(tx, ty) };
     }
 
     function nearestIntersection(x, y) {
@@ -503,9 +566,15 @@
         this.baseSpeed = isPolice ? 92 : 62 + Math.random() * 36;
         this.chaseSpeed = 154;
         this.chasing = false;
+        this.hitByPlayer = false;
         this.blockedTime = 0;
+        this.stuckTime = 0;
         this.yieldTimer = 0;
+        this.rightOfWayTimer = 0;
         this.overtakeTimer = 0;
+        this.emergencyTimer = 0;
+        this.reverseTimer = 0;
+        this.hitStopTimer = 0;
         this.lateralOffset = 0;
         this.targetLateral = 0;
         this.blocksUntilTurn = randInt(4, 5);
@@ -544,11 +613,34 @@
       }
 
       refreshPosition() {
-        const [x, y] = lanePosWithLateral(this.fromIX, this.fromIY, this.toIX, this.toIY, this.progress, this.lateralOffset);
-        this.x = x + this.pushX;
-        this.y = y + this.pushY;
-        this.targetAngle = angleTo(this.toIX - this.fromIX, this.toIY - this.fromIY);
+        const pose = curvedLanePose(this.fromIX, this.fromIY, this.toIX, this.toIY, this.progress, this.lateralOffset, this.lastDx, this.lastDy);
+        this.targetAngle = pose.angle;
         if (this.angle === undefined) this.angle = this.targetAngle;
+        let pushX = this.pushX;
+        let pushY = this.pushY;
+        let x = pose.x + pushX;
+        let y = pose.y + pushY;
+
+        for (let attempt = 0; attempt < 8 && rectHitsBuilding(x, y, this.length, this.width, this.angle); attempt++) {
+          pushX *= 0.45;
+          pushY *= 0.45;
+          x = pose.x + pushX;
+          y = pose.y + pushY;
+        }
+
+        if (rectHitsBuilding(x, y, this.length, this.width, this.angle)) {
+          pushX = 0;
+          pushY = 0;
+          this.pushVX = 0;
+          this.pushVY = 0;
+          x = pose.x;
+          y = pose.y;
+        }
+
+        this.pushX = pushX;
+        this.pushY = pushY;
+        this.x = x;
+        this.y = y;
       }
 
       updatePush(dt) {
@@ -575,9 +667,7 @@
 
       updateAngle(dt) {
         if (this.targetAngle === undefined) return;
-        let diff = this.targetAngle - this.angle;
-        while (diff > Math.PI) diff -= 2 * Math.PI;
-        while (diff < -Math.PI) diff += 2 * Math.PI;
+        const diff = normalizeAngle(this.targetAngle - this.angle);
         const maxRate = 6.5;
         if (diff > 0) this.angle += Math.min(diff, maxRate * dt);
         else this.angle += Math.max(diff, -maxRate * dt);
@@ -585,9 +675,7 @@
 
       angleAlignFactor() {
         if (this.targetAngle === undefined) return 1;
-        let diff = this.targetAngle - this.angle;
-        while (diff > Math.PI) diff -= 2 * Math.PI;
-        while (diff < -Math.PI) diff += 2 * Math.PI;
+        const diff = normalizeAngle(this.targetAngle - this.angle);
         const absDiff = Math.abs(diff);
         if (absDiff < 0.3) return 1;
         return Math.max(0.25, 1 - (absDiff - 0.3) * 0.55);
@@ -638,17 +726,24 @@
       }
 
       blockedInfo(allCars, player, lateral = this.lateralOffset, lookAhead = 0.085) {
-        const step = Math.min(1, this.progress + lookAhead);
-        const [ax, ay] = lanePosWithLateral(this.fromIX, this.fromIY, this.toIX, this.toIY, step, lateral);
+        const checks = [lookAhead, lookAhead + 0.07, lookAhead + 0.15, lookAhead + 0.24];
+        for (const ahead of checks) {
+          const step = Math.min(0.98, this.progress + ahead);
+          const pose = curvedLanePose(this.fromIX, this.fromIY, this.toIX, this.toIY, step, lateral, this.lastDx, this.lastDy);
+          const clearance = ahead > 0.18 ? 26 : 31;
 
-        for (const other of allCars) {
-          if (other === this) continue;
-          const d = Math.hypot(other.x - ax, other.y - ay);
-          if (d > 30) continue;
-          if (this.shouldYieldTo(other)) return { blocked: true, blocker: other };
+          for (const other of allCars) {
+            if (other === this) continue;
+            const d = Math.hypot(other.x - pose.x, other.y - pose.y);
+            if (d > clearance) continue;
+            if (this.shouldYieldTo(other)) return { blocked: true, blocker: other };
+          }
+
+          if (Math.hypot(player.x - pose.x, player.y - pose.y) < clearance + 2) {
+            return { blocked: true, blocker: player };
+          }
         }
 
-        if (Math.hypot(player.x - ax, player.y - ay) < 30) return { blocked: true, blocker: player };
         return { blocked: false, blocker: null };
       }
 
@@ -656,25 +751,47 @@
         return this.blockedInfo(allCars, player).blocked;
       }
 
-      overtakeIsSafe(allCars, player) {
-        if (this.progress < 0.2 || this.progress > 0.62) return false;
-        const passingLateral = -LANE_WIDTH;
+      overtakeIsSafe(allCars, player, passingLateral = -LANE_WIDTH, emergency = false, ignorePlayer = false) {
+        if (!emergency && (this.progress < 0.2 || this.progress > 0.62)) return false;
+        if (emergency && (this.progress < 0.08 || this.progress > 0.84)) return false;
 
-        for (const lookAhead of [0.08, 0.16, 0.25, 0.34]) {
+        for (const lookAhead of [0.03, 0.09, 0.16, 0.25, 0.34]) {
           const t = Math.min(0.96, this.progress + lookAhead);
-          const [ax, ay] = lanePosWithLateral(this.fromIX, this.fromIY, this.toIX, this.toIY, t, passingLateral);
-          if (Math.hypot(player.x - ax, player.y - ay) < 34) return false;
+          const pose = curvedLanePose(this.fromIX, this.fromIY, this.toIX, this.toIY, t, passingLateral, this.lastDx, this.lastDy);
+          if (rectHitsBuilding(pose.x, pose.y, this.length, this.width, this.angle)) return false;
+          if (!ignorePlayer && Math.hypot(player.x - pose.x, player.y - pose.y) < 34) return false;
           for (const other of allCars) {
             if (other === this) continue;
-            if (Math.hypot(other.x - ax, other.y - ay) < 34) return false;
+            if (Math.hypot(other.x - pose.x, other.y - pose.y) < 34) return false;
           }
         }
 
         return true;
       }
 
-      tryEscapeFromIntersection(allCars, player) {
-        if (this.progress > 0.08 || this.blockedTime < 2 || this.chasing) return false;
+      policeNeedsRightOfWay(allCars) {
+        if (this.isPolice) return false;
+        for (const police of allCars) {
+          if (!police.isPolice || !police.chasing) continue;
+          if (police.sameSegment(this) && police.progress < this.progress && this.progress - police.progress < 0.44) {
+            return true;
+          }
+          if (police.continuesInto(this) && police.progress > 0.7 && this.progress < 0.34) {
+            return true;
+          }
+          if (Math.hypot(police.x - this.x, police.y - this.y) < 92) {
+            const policeVx = Math.cos(police.angle);
+            const policeVy = Math.sin(police.angle);
+            const toCarX = this.x - police.x;
+            const toCarY = this.y - police.y;
+            if (policeVx * toCarX + policeVy * toCarY > 0) return true;
+          }
+        }
+        return false;
+      }
+
+      tryEscapeFromIntersection(allCars, player, force = false) {
+        if ((!force && this.progress > 0.08) || (force && this.progress > 0.18) || (!force && this.blockedTime < 2) || this.chasing) return false;
 
         const dirs = neighborDirs(this.fromIX, this.fromIY)
           .filter(([dx, dy]) => this.fromIX + dx !== this.toIX || this.fromIY + dy !== this.toIY)
@@ -707,7 +824,10 @@
           this.lateralOffset = 0;
           this.targetLateral = 0;
           this.overtakeTimer = 0;
+          this.emergencyTimer = 0;
+          this.reverseTimer = 0;
           this.blockedTime = 0;
+          this.stuckTime = 0;
           this.refreshPosition();
           return true;
         }
@@ -715,14 +835,16 @@
         return false;
       }
 
-      tryUTurn(allCars, player) {
+      tryUTurn(allCars, player, force = false) {
         if (this.chasing) return false;
-        if (this.blockedTime < 1.4) return false;
-        if (this.progress < 0.18 || this.progress > 0.78) return false;
+        if (!force && this.blockedTime < 1.4) return false;
+        if ((!force && (this.progress < 0.18 || this.progress > 0.78)) || (force && (this.progress < 0.08 || this.progress > 0.9))) return false;
 
-        for (const other of allCars) {
-          if (other === this) continue;
-          if (other.sameTrafficLane && other.sameTrafficLane(this) && other.progress < this.progress) return false;
+        if (!force) {
+          for (const other of allCars) {
+            if (other === this) continue;
+            if (other.sameTrafficLane && other.sameTrafficLane(this) && other.progress < this.progress) return false;
+          }
         }
 
         const newFromIX = this.toIX;
@@ -734,10 +856,11 @@
         for (const lookAhead of [0, 0.1, 0.22, 0.34]) {
           const t = Math.min(0.96, newProgress + lookAhead);
           const [x, y] = lanePosWithLateral(newFromIX, newFromIY, newToIX, newToIY, t, 0);
+          if (rectHitsBuilding(x, y, this.length, this.width, this.angle)) return false;
           if (Math.hypot(player.x - x, player.y - y) < 36) return false;
           for (const other of allCars) {
             if (other === this) continue;
-            if (Math.hypot(other.x - x, other.y - y) < 32) return false;
+            if (Math.hypot(other.x - x, other.y - y) < (force ? 27 : 32)) return false;
           }
         }
 
@@ -751,22 +874,89 @@
         this.lateralOffset = 0;
         this.targetLateral = 0;
         this.overtakeTimer = 0;
+        this.emergencyTimer = 0;
+        this.reverseTimer = 0;
         this.blockedTime = 0;
+        this.stuckTime = 0;
         this.refreshPosition();
         return true;
       }
 
+      rearIsClear(allCars, player) {
+        for (const lookBack of [0.05, 0.12, 0.2]) {
+          const t = Math.max(0.02, this.progress - lookBack);
+          const pose = curvedLanePose(this.fromIX, this.fromIY, this.toIX, this.toIY, t, this.lateralOffset, this.lastDx, this.lastDy);
+          if (rectHitsBuilding(pose.x, pose.y, this.length, this.width, this.angle)) return false;
+          if (Math.hypot(player.x - pose.x, player.y - pose.y) < 35) return false;
+          for (const other of allCars) {
+            if (other === this) continue;
+            if (Math.hypot(other.x - pose.x, other.y - pose.y) < 32) return false;
+          }
+        }
+        return true;
+      }
+
+      tryEmergencyEscape(allCars, player) {
+        if (this.hitStopTimer > 0 || this.stuckTime < STUCK_ESCAPE_SECONDS) return false;
+        if (this.overtakeIsSafe(allCars, player, -LANE_WIDTH, true)) {
+          this.emergencyTimer = 2.6;
+          this.overtakeTimer = 2.6;
+          this.stuckTime = STUCK_ESCAPE_SECONDS * 0.7;
+          return true;
+        }
+
+        if (this.tryEscapeFromIntersection(allCars, player, true)) return true;
+        if (this.tryUTurn(allCars, player, true)) return true;
+
+        if (this.rearIsClear(allCars, player)) {
+          this.reverseTimer = 1.2;
+          this.overtakeTimer = 0;
+          this.targetLateral = 0;
+          this.stuckTime = STUCK_ESCAPE_SECONDS * 0.7;
+          return true;
+        }
+
+        return false;
+      }
+
       update(dt, allCars, player) {
+        if (this.hitStopTimer > 0) {
+          this.hitStopTimer = Math.max(0, this.hitStopTimer - dt);
+          this.yieldTimer = Math.max(this.yieldTimer, this.hitStopTimer);
+          this.updatePush(dt);
+          this.targetLateral = 0;
+          this.lateralOffset += (0 - this.lateralOffset) * Math.min(1, 3.5 * dt);
+          this.refreshPosition();
+          this.updateAngle(dt);
+          return;
+        }
+
         if (this.yieldTimer > 0) this.yieldTimer -= dt;
+        if (this.rightOfWayTimer > 0) this.rightOfWayTimer -= dt;
         if (this.overtakeTimer > 0) this.overtakeTimer -= dt;
+        if (this.emergencyTimer > 0) this.emergencyTimer -= dt;
+        if (this.reverseTimer > 0) this.reverseTimer -= dt;
         this.updatePush(dt);
+        if (this.policeNeedsRightOfWay(allCars)) {
+          this.rightOfWayTimer = Math.max(this.rightOfWayTimer, 0.8);
+          this.yieldTimer = Math.max(this.yieldTimer, 0.5);
+        }
         const speed = this.chasing ? this.chaseSpeed : this.baseSpeed;
         const alignFactor = this.angleAlignFactor();
         const progressStep = speed * dt / CELL * alignFactor;
         const info = this.blockedInfo(allCars, player);
         const blocked = info.blocked;
         this.blockedTime = blocked ? this.blockedTime + dt : 0;
-        const canPass = blocked && info.blocker !== player && this.overtakeIsSafe(allCars, player);
+        this.stuckTime = blocked ? this.stuckTime + dt : Math.max(0, this.stuckTime - dt * 2);
+        if (this.tryEmergencyEscape(allCars, player)) {
+          this.updateAngle(dt);
+          return;
+        }
+
+        const chasingPolice = this.isPolice && this.chasing;
+        const canPass = blocked
+          && info.blocker !== player
+          && this.overtakeIsSafe(allCars, player, -LANE_WIDTH, chasingPolice, chasingPolice);
         const midBlockJam = blocked && !canPass && !this.chasing && this.progress > 0.14 && this.progress < 0.82;
         const impatient = this.blockedTime > (this.isPolice ? 0.45 : 0.9) && !midBlockJam;
 
@@ -775,13 +965,17 @@
           return;
         }
 
-        if (canPass && this.blockedTime > 0.35) {
-          this.overtakeTimer = 1.25;
+        if (canPass && this.blockedTime > (chasingPolice ? 0.12 : 0.35)) {
+          this.overtakeTimer = chasingPolice ? 1.75 : 1.25;
         }
 
-        const mustMergeBack = this.progress > 0.62 || (this.overtakeTimer > 0 && !this.overtakeIsSafe(allCars, player));
+        const mustMergeBack = this.progress > (chasingPolice ? 0.74 : 0.62)
+          || (this.overtakeTimer > 0 && !this.overtakeIsSafe(allCars, player, -LANE_WIDTH, chasingPolice, chasingPolice));
         if (mustMergeBack) this.overtakeTimer = 0;
-        this.targetLateral = this.overtakeTimer > 0 ? -LANE_WIDTH : 0;
+        if (this.progress > 0.74) this.emergencyTimer = 0;
+        this.targetLateral = this.overtakeTimer > 0 || this.emergencyTimer > 0
+          ? -LANE_WIDTH
+          : (this.rightOfWayTimer > 0 ? 10 : 0);
         const lateralStep = 82 * dt;
         if (this.lateralOffset < this.targetLateral) {
           this.lateralOffset = Math.min(this.targetLateral, this.lateralOffset + lateralStep);
@@ -793,6 +987,8 @@
 
         if (mergingBeforeIntersection) {
           this.progress = Math.min(this.progress, 0.68);
+        } else if (this.reverseTimer > 0) {
+          this.progress = Math.max(0.03, this.progress - progressStep * 0.85);
         } else if (!blocked || this.chasing || impatient || this.overtakeTimer > 0) {
           this.progress += progressStep * (this.yieldTimer > 0 ? 0.35 : 1);
           if (impatient) this.blockedTime = Math.min(this.blockedTime, 0.5);
@@ -813,6 +1009,9 @@
           this.lateralOffset = 0;
           this.targetLateral = 0;
           this.overtakeTimer = 0;
+          this.emergencyTimer = 0;
+          this.reverseTimer = 0;
+          this.stuckTime = 0;
           this.pickNextDirection(player);
         }
         this.refreshPosition();
@@ -905,19 +1104,37 @@
       player.speed = 0;
     }
 
-    function showMessage(text, ms) {
-      messageEl.textContent = text;
-      messageEl.style.display = "block";
-      messageTimer = ms / 1000;
+    function activeChaseCount() {
+      return policeCars.reduce((sum, police) => sum + (police.chasing ? 1 : 0), 0);
     }
 
-    function resetRound(text) {
-      round++;
+    function syncWantedLevel() {
+      wantedLevel = activeChaseCount();
+    }
+
+    function restartGame() {
       wantedLevel = 0;
-      wantedCooldown = 0;
+      survivalTime = 0;
+      gameOverTimer = 0;
+      keys.clear();
+      document.body.classList.remove("game-over");
+      messageEl.classList.remove("game-over");
+      messageEl.style.display = "none";
+      messageEl.textContent = "";
+      createBlocks();
+      createPedestrians();
       createTraffic();
       placePlayer();
-      showMessage(text || "BUSTED", 1400);
+    }
+
+    function startGameOver() {
+      if (gameOverTimer > 0) return;
+      player.speed = 0;
+      gameOverTimer = GAME_OVER_SECONDS;
+      messageEl.textContent = "Game over!";
+      messageEl.classList.add("game-over");
+      messageEl.style.display = "block";
+      document.body.classList.add("game-over");
     }
 
     function activateNearestPolice() {
@@ -931,14 +1148,35 @@
           best = police;
         }
       }
-      if (best) best.chasing = true;
+      if (!best) return false;
+      best.chasing = true;
+      best.hitStopTimer = 0;
+      best.yieldTimer = 0;
+      best.rightOfWayTimer = 0;
+      best.overtakeTimer = 0;
+      best.emergencyTimer = 0;
+      best.reverseTimer = 0;
+      return true;
     }
 
-    function bumpWanted() {
-      if (wantedCooldown > 0) return;
-      wantedCooldown = 0.8;
-      wantedLevel = Math.min(POLICE_COUNT, wantedLevel + 1);
-      activateNearestPolice();
+    function reportPlayerHit(car) {
+      if (car.isPolice || car.hitByPlayer) return;
+      car.hitByPlayer = true;
+      if (activateNearestPolice()) syncWantedLevel();
+    }
+
+    function updatePoliceChases() {
+      let changed = false;
+      for (const police of policeCars) {
+        if (!police.chasing) continue;
+        if (Math.hypot(police.x - player.x, police.y - player.y) < CHASE_LOST_DISTANCE) continue;
+        police.chasing = false;
+        police.overtakeTimer = 0;
+        police.emergencyTimer = 0;
+        police.targetLateral = 0;
+        changed = true;
+      }
+      if (changed) syncWantedLevel();
     }
 
     function updatePlayer(dt) {
@@ -987,6 +1225,36 @@
       pushPlayerOutOfBuilding();
     }
 
+    function aiMotionVector(car) {
+      const routeSpeed = car.hitStopTimer > 0 ? 0 : (car.chasing ? car.chaseSpeed : car.baseSpeed);
+      return {
+        x: Math.cos(car.angle) * routeSpeed + car.pushVX,
+        y: Math.sin(car.angle) * routeSpeed + car.pushVY
+      };
+    }
+
+    function addCarImpact(car, nx, ny, overlap, impulse) {
+      car.pushX += nx * overlap;
+      car.pushY += ny * overlap;
+      car.pushVX += nx * impulse;
+      car.pushVY += ny * impulse;
+      car.yieldTimer = Math.max(car.yieldTimer, 0.35);
+      car.blockedTime = Math.max(car.blockedTime, 0.4);
+    }
+
+    function applyAICarImpact(a, b, nx, ny, overlap) {
+      const av = aiMotionVector(a);
+      const bv = aiMotionVector(b);
+      const closing = (av.x - bv.x) * nx + (av.y - bv.y) * ny;
+      const impulse = Math.max(18, Math.abs(closing) * 0.45);
+      addCarImpact(a, -nx, -ny, overlap * 0.38, impulse * 0.42);
+      addCarImpact(b, nx, ny, overlap * 0.38, impulse * 0.42);
+      a.overtakeTimer = 0;
+      b.overtakeTimer = 0;
+      a.refreshPosition();
+      b.refreshPosition();
+    }
+
     function resolveCarPair(a, b) {
       const dx = b.x - a.x;
       const dy = b.y - a.y;
@@ -1012,19 +1280,31 @@
         const playerVx = Math.cos(player.angle) * player.speed;
         const playerVy = Math.sin(player.angle) * player.speed;
         const dotV = playerVx * dirX + playerVy * dirY;
+        const hitForce = Math.max(30, Math.abs(dotV));
         if (dotV > 0) {
-          const transfer = 0.55;
-          car.pushVX += dotV * transfer * dirX;
-          car.pushVY += dotV * transfer * dirY;
+          const transfer = 0.72;
+          car.pushVX += hitForce * transfer * dirX;
+          car.pushVY += hitForce * transfer * dirY;
         }
         car.refreshPosition();
-        player.speed *= 0.5;
-        car.yieldTimer = 0.4;
-        if (impactSpeed > 40) bumpWanted();
+        player.speed *= impactSpeed > 90 ? -0.12 : 0.38;
+        car.hitStopTimer = HIT_STOP_SECONDS;
+        car.yieldTimer = HIT_STOP_SECONDS;
+        car.blockedTime = 0;
+        car.stuckTime = 0;
+        car.overtakeTimer = 0;
+        car.emergencyTimer = 0;
+        car.reverseTimer = 0;
+        if (car.isPolice && car.chasing) {
+          startGameOver();
+        } else if (dotV > 16) {
+          reportPlayerHit(car);
+        }
         return true;
       }
 
       if (a.continuesInto(b) || b.continuesInto(a)) {
+        applyAICarImpact(a, b, nx, ny, overlap * 0.45);
         const behind = a.continuesInto(b) ? a : b;
         const ahead = behind === a ? b : a;
         behind.progress = Math.max(0.04, behind.progress - overlap / CELL * 0.85);
@@ -1038,6 +1318,7 @@
       }
 
       if (a.sameSegment(b) && !a.sameTrafficLane(b)) {
+        applyAICarImpact(a, b, nx, ny, overlap * 0.35);
         const behind = a.progress < b.progress ? a : b;
         behind.overtakeTimer = 0;
         behind.targetLateral = 0;
@@ -1053,6 +1334,7 @@
       }
 
       if (a.sameSegment(b)) {
+        applyAICarImpact(a, b, nx, ny, overlap * 0.3);
         const progressPush = overlap / CELL;
         if (a.progress < b.progress) {
           const oldA = a.progress;
@@ -1065,7 +1347,11 @@
           a.progress = Math.min(0.98, a.progress + progressPush * (oldB <= 0.04 ? 0.95 : 0.45));
           b.yieldTimer = 0.2;
         }
+        a.refreshPosition();
+        b.refreshPosition();
+        return true;
       } else {
+        applyAICarImpact(a, b, nx, ny, overlap * 0.45);
         const priority = a.chasing || (!b.chasing && a.fromIX + a.fromIY < b.fromIX + b.fromIY) ? a : b;
         const yielding = priority === a ? b : a;
         yielding.progress = Math.max(0.03, yielding.progress - overlap / CELL * 0.9);
@@ -1073,23 +1359,8 @@
         priority.progress = Math.min(0.98, priority.progress + overlap / CELL * 0.22);
         priority.refreshPosition();
         yielding.refreshPosition();
-
-        const pushX = priority === b ? nx : -nx;
-        const pushY = priority === b ? ny : -ny;
-        priority.x += pushX * overlap * 0.35;
-        priority.y += pushY * overlap * 0.35;
-        yielding.x -= pushX * overlap * 0.65;
-        yielding.y -= pushY * overlap * 0.65;
         return true;
       }
-
-      a.refreshPosition();
-      b.refreshPosition();
-      a.x -= nx * overlap * 0.5;
-      a.y -= ny * overlap * 0.5;
-      b.x += nx * overlap * 0.5;
-      b.y += ny * overlap * 0.5;
-      return true;
     }
 
     function resolveCollisions() {
@@ -1102,32 +1373,25 @@
           }
         }
       }
-
-      if (wantedLevel > 0) {
-        for (const police of policeCars) {
-          if (!police.chasing) continue;
-          if (Math.hypot(police.x - player.x, police.y - player.y) < 27) {
-            resetRound("BUSTED - ROUND " + (round + 1));
-            return;
-          }
-        }
-      }
+      pushPlayerOutOfBuilding();
     }
 
     function update(dt) {
-      if (wantedCooldown > 0) wantedCooldown -= dt;
+      if (gameOverTimer > 0) {
+        gameOverTimer -= dt;
+        if (gameOverTimer <= 0) restartGame();
+        return;
+      }
+
+      survivalTime += dt;
       updatePlayer(dt);
       for (const car of cars) car.update(dt, cars, player);
+      updatePoliceChases();
       resolveCollisions();
 
       for (const ped of pedestrians) {
         ped.t += ped.speed * dt;
         if (ped.t >= 4) ped.t -= 4;
-      }
-
-      if (messageTimer > 0) {
-        messageTimer -= dt;
-        if (messageTimer <= 0) messageEl.style.display = "none";
       }
     }
 
@@ -1467,9 +1731,11 @@
     }
 
     function updateHud() {
+      const minutes = Math.floor(survivalTime / 60);
+      const seconds = Math.floor(survivalTime % 60).toString().padStart(2, "0");
       speedEl.textContent = "Speed " + Math.round(Math.abs(player.speed));
-      wantedEl.textContent = "Wanted " + (wantedLevel ? "★".repeat(wantedLevel) : "-");
-      roundEl.textContent = "Round " + round;
+      wantedEl.textContent = "Chasers " + wantedLevel;
+      survivalEl.textContent = "Time " + minutes + ":" + seconds;
     }
 
     function frame(now) {

@@ -221,6 +221,18 @@
     }
 
     @media (max-width: 640px) {
+      .scoreboard {
+        right: max(12px, env(safe-area-inset-right));
+        left: auto;
+        min-width: 118px;
+        padding: 8px 10px 9px;
+        transform: none;
+      }
+
+      .scoreboard strong {
+        font-size: 40px;
+      }
+
       .hud {
         min-width: 145px;
         padding: 8px 9px;
@@ -1915,8 +1927,8 @@
       minimapCtx.fillStyle = "#20252a";
       minimapCtx.fillRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
 
-      minimapCtx.fillStyle = "#bca86f";
-      minimapCtx.strokeStyle = "rgba(255, 244, 210, 0.22)";
+      minimapCtx.fillStyle = "rgba(188, 168, 111, 0.25)";
+      minimapCtx.strokeStyle = "rgba(255, 244, 210, 0.15)";
       minimapCtx.lineWidth = 1;
       for (const block of blocks) {
         const x = blockWorldX(block.gx) * scale;

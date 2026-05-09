@@ -553,7 +553,7 @@
     }
 
     function normalizeAngle(angle) {
-      while (angle > Math.PI) angle -= 2 * Math.PI;
+      while (angle >= Math.PI) angle -= 2 * Math.PI;
       while (angle < -Math.PI) angle += 2 * Math.PI;
       return angle;
     }
@@ -2294,7 +2294,7 @@
     }
 
     function buildingRise(house) {
-      return 16 + house.floors * 5.5;
+      return 8 + house.floors * 5.5;
     }
 
     function drawBuilding(baseX, baseY, size, house, cam) {

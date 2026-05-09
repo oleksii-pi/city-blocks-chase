@@ -4,3 +4,4 @@ When the user selects an area of interest, it should be without the blurred filt
 When the user stops the selection by releasing the mouse button, recording starts and gameplay continues.  
 Recording stops and data is copied to the clipboard upon pressing space.  
 When the user presses Esc during recording, the action should be canceled without copying to the clipboard.
+When the user selects an area, the recording of movements starts for cars that are inside this area at the time of selection, even if they leave this area afterward.

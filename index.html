@@ -386,7 +386,7 @@
     const POLICE_COUNT = 20;
     const TURN_ARC = 0.2;
     const UTURN_ARC = 0.36;
-    const HIT_STOP_SECONDS = 1.2;
+    const HIT_STOP_SECONDS = 15;
     const STUCK_ESCAPE_SECONDS = 3;
     const CHASE_CLOSE_DISTANCE = 3 * CELL;
     const CHASE_LOST_DISTANCE = 5 * CELL;
@@ -457,6 +457,7 @@
       startedAt: 0,
       copiedAt: 0,
       frames: 0,
+      trackedCars: [],
       rows: []
     };
 
@@ -2022,21 +2023,35 @@
       debugRecorder.startedAt = 0;
       debugRecorder.copiedAt = 0;
       debugRecorder.frames = 0;
+      debugRecorder.trackedCars.length = 0;
       debugRecorder.rows.length = 0;
       debugRecorderMessageEl.textContent = "Select interesting area.";
       setDebugSelectionBox(null);
       updateDebugClasses();
     }
 
+    function collectDebugTrackedCars(area, cam) {
+      debugRecorder.trackedCars.length = 0;
+      if (carIntersectsArea(player, area, cam)) {
+        debugRecorder.trackedCars.push({ car: player, isPlayer: true });
+      }
+      for (const car of cars) {
+        if (!carIntersectsArea(car, area, cam)) continue;
+        debugRecorder.trackedCars.push({ car, isPlayer: false });
+      }
+    }
+
     function startDebugRecording(area) {
+      const cam = createCamera();
       debugRecorder.mode = "recording";
       debugRecorder.selecting = false;
       debugRecorder.pointerId = null;
       debugRecorder.area = area;
       debugRecorder.startedAt = performance.now();
       debugRecorder.frames = 0;
+      collectDebugTrackedCars(area, cam);
       debugRecorder.rows.length = 0;
-      debugRecorderMessageEl.textContent = "Recording car movement. Press Space to copy.";
+      debugRecorderMessageEl.textContent = "Recording " + debugRecorder.trackedCars.length + " cars. Press Space to copy.";
       setDebugSelectionBox(area);
       updateDebugClasses();
     }
@@ -2067,6 +2082,7 @@
       debugRecorder.startedAt = 0;
       debugRecorder.copiedAt = 0;
       debugRecorder.frames = 0;
+      debugRecorder.trackedCars.length = 0;
       debugRecorder.rows.length = 0;
       debugRecorderMessageEl.textContent = "";
       setDebugSelectionBox(null);
@@ -2080,11 +2096,10 @@
       };
     }
 
-    function carIntersectsDebugArea(car, cam) {
-      if (!debugRecorder.area) return null;
+    function carIntersectsArea(car, area, cam) {
+      if (!area) return null;
       const p = worldToScreen(car.x, car.y, cam);
       const radius = (car.radius || 16) * cam.scale;
-      const area = debugRecorder.area;
       if (p.x + radius < area.x || p.x - radius > area.x + area.w) return null;
       if (p.y + radius < area.y || p.y - radius > area.y + area.h) return null;
       return p;
@@ -2128,23 +2143,14 @@
     function recordDebugFrame(cam, now) {
       if (debugRecorder.mode !== "recording" || !debugRecorder.area) return;
       const timeMs = Math.max(0, Math.round(now - debugRecorder.startedAt));
-      let visibleCars = 0;
 
-      const playerPoint = carIntersectsDebugArea(player, cam);
-      if (playerPoint) {
-        debugRecorder.rows.push(debugCarRow(player, true, playerPoint, timeMs));
-        visibleCars++;
-      }
-
-      for (const car of cars) {
-        const screenPoint = carIntersectsDebugArea(car, cam);
-        if (!screenPoint) continue;
-        debugRecorder.rows.push(debugCarRow(car, false, screenPoint, timeMs));
-        visibleCars++;
+      for (const tracked of debugRecorder.trackedCars) {
+        const screenPoint = worldToScreen(tracked.car.x, tracked.car.y, cam);
+        debugRecorder.rows.push(debugCarRow(tracked.car, tracked.isPlayer, screenPoint, timeMs));
       }
 
       debugRecorder.frames++;
-      debugRecorderMessageEl.textContent = "Recording " + (timeMs / 1000).toFixed(1) + "s  Cars " + visibleCars + "  Press Space to copy.";
+      debugRecorderMessageEl.textContent = "Recording " + (timeMs / 1000).toFixed(1) + "s  Cars " + debugRecorder.trackedCars.length + "  Press Space to copy.";
     }
 
     function buildDebugRecordingText() {
@@ -2157,6 +2163,7 @@
           formatDebugNumber(area.w),
           formatDebugNumber(area.h)
         ].join("\t"),
+        "# tracked_cars\t" + debugRecorder.trackedCars.length,
         "# frames\t" + debugRecorder.frames,
         DEBUG_RECORDER_COLUMNS.join("\t"),
         ...debugRecorder.rows
@@ -2205,6 +2212,7 @@
 
       debugRecorder.rows.length = 0;
       debugRecorder.area = null;
+      debugRecorder.trackedCars.length = 0;
       showDebugStatus(copied ? "Recorded " + rowCount + " rows copied." : "Clipboard blocked. Recording logged to console.");
     }
 

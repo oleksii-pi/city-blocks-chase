@@ -306,6 +306,7 @@
     const TOTAL_CARS = 200;
     const POLICE_COUNT = 20;
     const TURN_ARC = 0.2;
+    const UTURN_ARC = 0.36;
     const HIT_STOP_SECONDS = 15;
     const STUCK_ESCAPE_SECONDS = 3;
     const CHASE_CLOSE_DISTANCE = 3 * CELL;
@@ -329,7 +330,10 @@
       aiAcceleration: 90,
       aiBrake: 150,
       aiTurnRate: 4.8,
-      renderMinVectorSpeed: 1.5
+      renderMinVectorSpeed: 1.5,
+      renderTurnRate: 5.2,
+      renderMaxSlipAngle: 0.48,
+      renderMaxReverseSlipAngle: 0.2
     };
     const keys = new Set();
 
@@ -432,6 +436,12 @@
       return angle;
     }
 
+    function approachAngle(value, target, amount) {
+      const diff = normalizeAngle(target - value);
+      if (diff > 0) return value + Math.min(diff, amount);
+      return value + Math.max(diff, -amount);
+    }
+
     function angleTo(dx, dy) {
       return Math.atan2(dy, dx);
     }
@@ -478,7 +488,27 @@
     function curvedLanePose(fromIX, fromIY, toIX, toIY, progress, lateral, incomingDx, incomingDy) {
       const dx = toIX - fromIX;
       const dy = toIY - fromIY;
-      const turning = (incomingDx !== dx || incomingDy !== dy) && (incomingDx !== -dx || incomingDy !== -dy);
+      const reversing = incomingDx === -dx && incomingDy === -dy;
+      if (reversing && progress < UTURN_ARC) {
+        const [cx, cy] = intersectionCenter(fromIX, fromIY);
+        const [inOx, inOy] = laneOffset(incomingDx, incomingDy);
+        const [startX, startY] = [cx + inOx, cy + inOy];
+        const [endX, endY] = lanePosWithLateral(fromIX, fromIY, toIX, toIY, UTURN_ARC, lateral);
+        const handle = CELL * 0.26;
+        const c1x = startX + incomingDx * handle;
+        const c1y = startY + incomingDy * handle;
+        const c2x = endX - dx * handle;
+        const c2y = endY - dy * handle;
+        const t = smoothstep(progress / UTURN_ARC);
+        const inv = 1 - t;
+        const x = inv * inv * inv * startX + 3 * inv * inv * t * c1x + 3 * inv * t * t * c2x + t * t * t * endX;
+        const y = inv * inv * inv * startY + 3 * inv * inv * t * c1y + 3 * inv * t * t * c2y + t * t * t * endY;
+        const tx = 3 * inv * inv * (c1x - startX) + 6 * inv * t * (c2x - c1x) + 3 * t * t * (endX - c2x);
+        const ty = 3 * inv * inv * (c1y - startY) + 6 * inv * t * (c2y - c1y) + 3 * t * t * (endY - c2y);
+        return { x, y, angle: angleTo(tx, ty) };
+      }
+
+      const turning = (incomingDx !== dx || incomingDy !== dy) && !reversing;
       if (!turning || progress >= TURN_ARC) {
         const [x, y] = lanePosWithLateral(fromIX, fromIY, toIX, toIY, progress, lateral);
         return { x, y, angle: angleTo(dx, dy) };
@@ -818,9 +848,7 @@
         const vy = (this.y - prevY) / dt;
         this.motionX = vx;
         this.motionY = vy;
-        if (Math.hypot(vx, vy) > CAR_PHYSICS.renderMinVectorSpeed) {
-          this.renderAngle = carMotionRenderAngle(this, vx, vy);
-        }
+        updateCarRenderAngle(this, vx, vy, dt);
       }
 
       angleAlignFactor() {
@@ -1213,16 +1241,15 @@
 
       pickChaseDirection(goalIX, goalIY) {
         const dirs = neighborDirs(this.fromIX, this.fromIY);
-        const forwardChoices = dirs.filter(([dx, dy]) => !(dx === -this.lastDx && dy === -this.lastDy));
-        const candidates = forwardChoices.length ? forwardChoices : dirs;
         let best = null;
         let bestScore = Infinity;
 
-        for (const [dx, dy] of candidates) {
+        for (const [dx, dy] of dirs) {
           const nx = this.fromIX + dx;
           const ny = this.fromIY + dy;
           const distance = Math.abs(goalIX - nx) + Math.abs(goalIY - ny);
-          const turnCost = dx === this.lastDx && dy === this.lastDy ? 0 : 0.35;
+          const reversing = dx === -this.lastDx && dy === -this.lastDy;
+          const turnCost = dx === this.lastDx && dy === this.lastDy ? 0 : (reversing ? 1.15 : 0.35);
           const score = distance + turnCost;
           if (score < bestScore) {
             bestScore = score;
@@ -1465,14 +1492,13 @@
       if (dt > 0) {
         player.motionX = (player.x - prevX) / dt;
         player.motionY = (player.y - prevY) / dt;
-        if (Math.hypot(player.motionX, player.motionY) > CAR_PHYSICS.renderMinVectorSpeed) {
-          player.renderAngle = carMotionRenderAngle(player, player.motionX, player.motionY);
-        }
+        updateCarRenderAngle(player, player.motionX, player.motionY, dt);
       }
     }
 
     function aiMotionVector(car) {
-      const routeSpeed = car.hitStopTimer > 0 ? 0 : (car.speed || 0);
+      const routeSign = car.reverseTimer > 0 ? -0.85 : 1;
+      const routeSpeed = car.hitStopTimer > 0 ? 0 : (car.speed || 0) * routeSign;
       return {
         x: Math.cos(car.angle) * routeSpeed + car.pushVX,
         y: Math.sin(car.angle) * routeSpeed + car.pushVY
@@ -1936,17 +1962,33 @@
       ctx.fill();
     }
 
-    function carMotionRenderAngle(car, vx, vy) {
+    function desiredCarRenderAngle(car, vx, vy) {
       const heading = car.angle ?? car.renderAngle ?? 0;
-      if (Math.hypot(vx, vy) <= CAR_PHYSICS.renderMinVectorSpeed) {
-        return car.renderAngle ?? heading;
-      }
+      if (Math.hypot(vx, vy) <= CAR_PHYSICS.renderMinVectorSpeed) return heading;
+
       const forwardDot = Math.cos(heading) * vx + Math.sin(heading) * vy;
-      return forwardDot < -CAR_PHYSICS.renderMinVectorSpeed ? heading : angleTo(vx, vy);
+      const sideDot = -Math.sin(heading) * vx + Math.cos(heading) * vy;
+      const movingBackward = forwardDot < -CAR_PHYSICS.renderMinVectorSpeed;
+      const maxSlip = movingBackward ? CAR_PHYSICS.renderMaxReverseSlipAngle : CAR_PHYSICS.renderMaxSlipAngle;
+      const slip = clamp(Math.atan2(sideDot, Math.max(Math.abs(forwardDot), CAR_PHYSICS.renderMinVectorSpeed)), -maxSlip, maxSlip);
+
+      return heading + (movingBackward ? -slip : slip);
+    }
+
+    function updateCarRenderAngle(car, vx, vy, dt) {
+      const heading = car.angle ?? car.renderAngle ?? 0;
+      if (car.renderAngle === undefined) car.renderAngle = heading;
+      if (Math.hypot(vx, vy) <= CAR_PHYSICS.renderMinVectorSpeed) {
+        car.renderAngle = approachAngle(car.renderAngle, heading, CAR_PHYSICS.renderTurnRate * dt);
+        return;
+      }
+
+      const desired = desiredCarRenderAngle(car, vx, vy);
+      car.renderAngle = approachAngle(car.renderAngle, desired, CAR_PHYSICS.renderTurnRate * dt);
     }
 
     function carSpriteAngle(car) {
-      return carMotionRenderAngle(car, car.motionX || 0, car.motionY || 0);
+      return car.renderAngle ?? car.angle ?? 0;
     }
 
     function drawCar(car, cam, isPlayer = false) {

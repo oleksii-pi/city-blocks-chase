@@ -111,6 +111,9 @@
     }
 
     .minimap {
+      position: fixed;
+      left: max(12px, env(safe-area-inset-left));
+      bottom: max(12px, env(safe-area-inset-bottom));
       display: none;
       width: 200px;
       height: 200px;
@@ -119,6 +122,9 @@
       background: rgba(24, 28, 25, 0.82);
       box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
       backdrop-filter: blur(5px);
+      pointer-events: none;
+      user-select: none;
+      z-index: 2;
     }
 
     .minimap.visible {

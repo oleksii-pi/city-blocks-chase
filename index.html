@@ -375,7 +375,7 @@
 
     const MINIMAP_SIZE = 200;
     const GRID = 16;
-    const ROAD = 90;
+    const ROAD = 100;
     const BLOCK = 180;
     const CELL = ROAD + BLOCK;
     const WORLD = GRID * CELL + ROAD;
@@ -386,7 +386,7 @@
     const POLICE_COUNT = 20;
     const TURN_ARC = 0.2;
     const UTURN_ARC = 0.36;
-    const HIT_STOP_SECONDS = 15;
+    const HIT_STOP_SECONDS = 1.2;
     const STUCK_ESCAPE_SECONDS = 3;
     const CHASE_CLOSE_DISTANCE = 3 * CELL;
     const CHASE_LOST_DISTANCE = 5 * CELL;
@@ -861,6 +861,7 @@
         this.yieldTimer = 0;
         this.rightOfWayTimer = 0;
         this.overtakeTimer = 0;
+        this.overtakeUrgent = false;
         this.emergencyTimer = 0;
         this.reverseTimer = 0;
         this.hitStopTimer = 0;
@@ -970,7 +971,16 @@
         const vy = (this.y - prevY) / dt;
         this.motionX = vx;
         this.motionY = vy;
-        updateCarRenderAngle(this, vx, vy, dt);
+      }
+
+      useLaneChangeHeading(prevProgress, prevLateral, dt) {
+        if (dt <= 0) return false;
+        const lateralDelta = this.lateralOffset - prevLateral;
+        const progressDelta = this.progress - prevProgress;
+        if (Math.abs(lateralDelta) < 0.15 || progressDelta < -0.0005) return false;
+        if (Math.hypot(this.motionX || 0, this.motionY || 0) <= CAR_PHYSICS.renderMinVectorSpeed) return false;
+        this.targetAngle = angleTo(this.motionX, this.motionY);
+        return true;
       }
 
       angleAlignFactor() {
@@ -1124,6 +1134,7 @@
           this.lateralOffset = 0;
           this.targetLateral = 0;
           this.overtakeTimer = 0;
+          this.overtakeUrgent = false;
           this.emergencyTimer = 0;
           this.reverseTimer = 0;
           this.blockedTime = 0;
@@ -1174,6 +1185,7 @@
         this.lateralOffset = 0;
         this.targetLateral = 0;
         this.overtakeTimer = 0;
+        this.overtakeUrgent = false;
         this.emergencyTimer = 0;
         this.reverseTimer = 0;
         this.blockedTime = 0;
@@ -1201,6 +1213,7 @@
         if (this.overtakeIsSafe(allCars, player, -LANE_WIDTH, true)) {
           this.emergencyTimer = 2.6;
           this.overtakeTimer = 2.6;
+          this.overtakeUrgent = true;
           this.stuckTime = STUCK_ESCAPE_SECONDS * 0.7;
           return true;
         }
@@ -1211,6 +1224,7 @@
         if (this.rearIsClear(allCars, player)) {
           this.reverseTimer = 1.2;
           this.overtakeTimer = 0;
+          this.overtakeUrgent = false;
           this.targetLateral = 0;
           this.stuckTime = STUCK_ESCAPE_SECONDS * 0.7;
           return true;
@@ -1233,7 +1247,9 @@
           this.lateralOffset += (0 - this.lateralOffset) * Math.min(1, 3.5 * dt);
           this.refreshPosition();
           this.updateMotionVector(prevX, prevY, dt);
+          this.useLaneChangeHeading(this.progress, this.lateralOffset, dt);
           this.updateAngle(dt);
+          updateCarRenderAngle(this, this.motionX || 0, this.motionY || 0, dt);
           return;
         }
 
@@ -1241,6 +1257,7 @@
         if (this.rightOfWayTimer > 0) this.rightOfWayTimer -= dt;
         if (this.overtakeTimer > 0) this.overtakeTimer -= dt;
         if (this.emergencyTimer > 0) this.emergencyTimer -= dt;
+        if (this.overtakeTimer <= 0) this.overtakeUrgent = false;
         if (this.reverseTimer > 0) this.reverseTimer -= dt;
         this.updatePush(dt);
         if (this.policeNeedsRightOfWay(allCars)) {
@@ -1262,9 +1279,11 @@
         }
 
         const chasingPolice = this.isPolice && this.chasing;
+        const blockedByPlayer = info.blocker === player;
+        const urgentPass = chasingPolice || blockedByPlayer;
         const canPass = blocked
-          && info.blocker !== player
-          && this.overtakeIsSafe(allCars, player, -LANE_WIDTH, chasingPolice, chasingPolice);
+          && (!blockedByPlayer || this.blockedTime > 0.35 || chasingPolice)
+          && this.overtakeIsSafe(allCars, player, -LANE_WIDTH, urgentPass, chasingPolice);
         const midBlockJam = blocked && !canPass && !this.chasing && this.progress > 0.14 && this.progress < 0.82;
         const impatient = this.blockedTime > (this.isPolice ? 0.45 : 0.9) && !midBlockJam;
 
@@ -1275,26 +1294,34 @@
 
         if (canPass && this.blockedTime > (chasingPolice ? 0.12 : 0.35)) {
           this.overtakeTimer = chasingPolice ? 1.75 : 1.25;
+          this.overtakeUrgent = urgentPass;
         }
 
-        const mustMergeBack = this.progress > (chasingPolice ? 0.74 : 0.62)
-          || (this.overtakeTimer > 0 && !this.overtakeIsSafe(allCars, player, -LANE_WIDTH, chasingPolice, chasingPolice));
-        if (mustMergeBack) this.overtakeTimer = 0;
+        const activeUrgentPass = this.overtakeTimer > 0 && this.overtakeUrgent;
+        const mergeProgress = activeUrgentPass ? 0.82 : (chasingPolice ? 0.74 : 0.62);
+        const mustMergeBack = this.progress > mergeProgress
+          || (this.overtakeTimer > 0 && !this.overtakeIsSafe(allCars, player, -LANE_WIDTH, activeUrgentPass || chasingPolice, chasingPolice));
+        if (mustMergeBack) {
+          this.overtakeTimer = 0;
+          this.overtakeUrgent = false;
+        }
         if (this.progress > 0.74) this.emergencyTimer = 0;
         this.targetLateral = this.overtakeTimer > 0 || this.emergencyTimer > 0
           ? -LANE_WIDTH
           : (this.rightOfWayTimer > 0 ? 10 : 0);
         const lateralStep = 82 * dt;
+        const prevProgress = this.progress;
+        const prevLateral = this.lateralOffset;
         if (this.lateralOffset < this.targetLateral) {
           this.lateralOffset = Math.min(this.targetLateral, this.lateralOffset + lateralStep);
         } else if (this.lateralOffset > this.targetLateral) {
           this.lateralOffset = Math.max(this.targetLateral, this.lateralOffset - lateralStep);
         }
 
-        const mergingBeforeIntersection = this.progress > 0.66 && Math.abs(this.lateralOffset) > 3;
+        const mergingBeforeIntersection = this.targetLateral === 0 && this.progress > 0.66 && Math.abs(this.lateralOffset) > 3;
 
         if (mergingBeforeIntersection) {
-          this.progress = Math.min(this.progress, 0.68);
+          this.progress = Math.min(0.88, this.progress + progressStep * 0.22);
         } else if (this.reverseTimer > 0) {
           this.progress = Math.max(0.03, this.progress - progressStep * 0.85);
         } else if (!blocked || this.chasing || impatient || this.overtakeTimer > 0) {
@@ -1317,6 +1344,7 @@
           this.lateralOffset = 0;
           this.targetLateral = 0;
           this.overtakeTimer = 0;
+          this.overtakeUrgent = false;
           this.emergencyTimer = 0;
           this.reverseTimer = 0;
           this.stuckTime = 0;
@@ -1324,7 +1352,9 @@
         }
         this.refreshPosition();
         this.updateMotionVector(prevX, prevY, dt);
+        this.useLaneChangeHeading(prevProgress, prevLateral, dt);
         this.updateAngle(dt);
+        updateCarRenderAngle(this, this.motionX || 0, this.motionY || 0, dt);
       }
 
       pickNextDirection(player) {
@@ -1688,8 +1718,13 @@
         car.refreshPosition();
         player.speed *= impactSpeed > 90 ? -0.12 : 0.38;
         if (!car.isPolice || !car.chasing) {
-          car.hitStopTimer = HIT_STOP_SECONDS;
-          car.yieldTimer = HIT_STOP_SECONDS;
+          const recoverySeconds = dotV > 12 ? Math.min(HIT_STOP_SECONDS, 0.25 + dotV / 140) : 0;
+          if (recoverySeconds > 0) {
+            car.hitStopTimer = Math.max(car.hitStopTimer, recoverySeconds);
+            car.yieldTimer = Math.max(car.yieldTimer, recoverySeconds);
+          } else {
+            car.yieldTimer = Math.max(car.yieldTimer, 0.25);
+          }
           car.blockedTime = 0;
           car.stuckTime = 0;
           car.overtakeTimer = 0;

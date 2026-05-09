@@ -170,54 +170,50 @@
 
     .controls {
       position: fixed;
-      right: max(14px, env(safe-area-inset-right));
-      bottom: max(14px, env(safe-area-inset-bottom));
-      display: grid;
-      grid-template-columns: repeat(3, 58px);
-      grid-template-rows: repeat(2, 58px);
-      gap: 8px;
+      right: max(18px, env(safe-area-inset-right));
+      bottom: max(18px, env(safe-area-inset-bottom));
+      width: 144px;
+      height: 144px;
+      touch-action: none;
       user-select: none;
+      z-index: 2;
     }
 
-    .control {
-      width: 58px;
-      height: 58px;
+    .joystick {
+      position: relative;
+      width: 100%;
+      height: 100%;
       border: 1px solid rgba(255, 244, 210, 0.26);
-      border-radius: 8px;
-      background: rgba(22, 25, 24, 0.72);
-      color: #fff4cf;
-      font-size: 25px;
-      font-weight: 800;
-      line-height: 1;
-      box-shadow: 0 10px 22px rgba(0, 0, 0, 0.24);
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(255, 244, 210, 0.18) 0 2px, transparent 3px),
+        radial-gradient(circle at 50% 50%, rgba(255, 244, 210, 0.08) 0 31%, transparent 32%),
+        rgba(22, 25, 24, 0.68);
+      box-shadow: 0 14px 30px rgba(0, 0, 0, 0.28);
+      touch-action: none;
+      backdrop-filter: blur(4px);
+    }
+
+    .joystick-knob {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 48px;
+      height: 48px;
+      border: 1px solid rgba(255, 246, 215, 0.64);
+      border-radius: 50%;
+      background: rgba(255, 244, 210, 0.88);
+      box-shadow:
+        inset 0 0 0 8px rgba(29, 33, 30, 0.14),
+        0 10px 20px rgba(0, 0, 0, 0.28);
+      transform: translate(calc(-50% + var(--knob-x, 0px)), calc(-50% + var(--knob-y, 0px)));
+      transition: transform 90ms ease-out, background 90ms ease-out;
       touch-action: none;
     }
 
-    .control:active,
-    .control.active {
-      background: rgba(255, 244, 210, 0.9);
-      color: #1c211e;
-      transform: translateY(1px);
-    }
-
-    .control.up {
-      grid-column: 2;
-      grid-row: 1;
-    }
-
-    .control.left {
-      grid-column: 1;
-      grid-row: 2;
-    }
-
-    .control.down {
-      grid-column: 2;
-      grid-row: 2;
-    }
-
-    .control.right {
-      grid-column: 3;
-      grid-row: 2;
+    .joystick.active .joystick-knob {
+      background: #fff6d7;
+      transition: none;
     }
 
     .debug-recorder {
@@ -281,7 +277,7 @@
       z-index: 1;
     }
 
-    @media (max-width: 640px) {
+    @media (max-width: 640px), ((max-height: 480px) and (pointer: coarse)) {
       .scoreboard {
         right: max(12px, env(safe-area-inset-right));
         left: auto;
@@ -299,15 +295,21 @@
         padding: 8px 9px;
       }
 
-      .controls {
-        grid-template-columns: repeat(3, 52px);
-        grid-template-rows: repeat(2, 52px);
-        gap: 7px;
+      .minimap {
+        width: 124px;
+        height: 124px;
       }
 
-      .control {
-        width: 52px;
-        height: 52px;
+      .controls {
+        right: max(16px, env(safe-area-inset-right));
+        bottom: max(16px, env(safe-area-inset-bottom));
+        width: 132px;
+        height: 132px;
+      }
+
+      .joystick-knob {
+        width: 44px;
+        height: 44px;
       }
     }
   </style>
@@ -321,7 +323,7 @@
       <span id="speed">Speed 0</span>
       <span id="wanted">Chasers 0</span>
       <span id="survival">Time 0:00</span>
-      <span>Arrow keys or buttons</span>
+      <span>Arrow keys or joystick</span>
     </div>
     <canvas id="minimap" class="minimap" width="200" height="200" aria-label="Police chase minimap"></canvas>
   </div>
@@ -344,10 +346,9 @@
   </div>
 
   <div class="controls" aria-label="Driving controls">
-    <button class="control up" data-key="ArrowUp" aria-label="Accelerate">▲</button>
-    <button class="control left" data-key="ArrowLeft" aria-label="Turn left">◀</button>
-    <button class="control down" data-key="ArrowDown" aria-label="Brake and reverse">▼</button>
-    <button class="control right" data-key="ArrowRight" aria-label="Turn right">▶</button>
+    <div id="joystick" class="joystick" role="application" aria-label="Touch joystick">
+      <div id="joystickKnob" class="joystick-knob" aria-hidden="true"></div>
+    </div>
   </div>
 
   <script>
@@ -363,6 +364,8 @@
     const messageEl = document.getElementById("message");
     const minimapCanvas = document.getElementById("minimap");
     const minimapCtx = minimapCanvas.getContext("2d");
+    const joystickEl = document.getElementById("joystick");
+    const joystickKnobEl = document.getElementById("joystickKnob");
     const debugRecorderEl = document.getElementById("debugRecorder");
     const debugRecorderMessageEl = document.getElementById("debugRecorderMessage");
     const debugRecorderSelectionEl = document.getElementById("debugRecorderSelection");
@@ -397,6 +400,10 @@
     const GAME_OVER_SECONDS = GAME_OVER_SPLASH_SECONDS + GAME_OVER_FADE_SECONDS;
     const POLICE_FRONT_HIT_DOT = 0.55;
     const POLICE_CHASE_LANES = [0, -LANE_WIDTH];
+    const PHONE_LAYOUT_QUERY = "(max-width: 640px), ((max-height: 480px) and (pointer: coarse))";
+    const PHONE_MINIMAP_SIZE = 124;
+    const JOYSTICK_DEAD_ZONE = 0.08;
+    const JOYSTICK_TURN_RATE = 5.8;
     const DEBUG_RECORDER_MIN_SIZE = 8;
     const DEBUG_RECORDER_STATUS_MS = 1600;
     const DEBUG_RECORDER_COLUMNS = [
@@ -445,6 +452,13 @@
       renderMaxReverseSlipAngle: 0.2
     };
     const keys = new Set();
+    const joystick = {
+      active: false,
+      pointerId: null,
+      x: 0,
+      y: 0,
+      strength: 0
+    };
     const debugRecorder = {
       mode: "idle",
       selecting: false,
@@ -513,7 +527,12 @@
     let gameOverTimer = 0;
     let gameOverStartedAt = 0;
     let gameOverFading = false;
+    let minimapSize = MINIMAP_SIZE;
     let lastTime = performance.now();
+
+    function getMinimapSize() {
+      return window.matchMedia(PHONE_LAYOUT_QUERY).matches ? PHONE_MINIMAP_SIZE : MINIMAP_SIZE;
+    }
 
     function resize() {
       const ratio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
@@ -521,8 +540,11 @@
       canvas.height = Math.floor(window.innerHeight * ratio);
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
 
-      minimapCanvas.width = Math.floor(MINIMAP_SIZE * ratio);
-      minimapCanvas.height = Math.floor(MINIMAP_SIZE * ratio);
+      minimapSize = getMinimapSize();
+      minimapCanvas.style.width = minimapSize + "px";
+      minimapCanvas.style.height = minimapSize + "px";
+      minimapCanvas.width = Math.floor(minimapSize * ratio);
+      minimapCanvas.height = Math.floor(minimapSize * ratio);
       minimapCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
     }
 
@@ -1536,6 +1558,7 @@
       gameOverStartedAt = 0;
       gameOverFading = false;
       keys.clear();
+      resetJoystick();
       document.body.classList.remove("game-over");
       document.body.classList.remove("game-over-fade");
       messageEl.classList.remove("game-over");
@@ -1647,8 +1670,16 @@
       const prevX = player.x;
       const prevY = player.y;
       pushPlayerOutOfBuilding();
+      const joystickDriving = joystick.strength > JOYSTICK_DEAD_ZONE;
 
-      if (keys.has("ArrowUp")) {
+      if (joystickDriving) {
+        const targetSpeed = player.maxSpeed * joystick.strength;
+        const speedRate = targetSpeed > player.speed ? player.acceleration : player.brake;
+        player.speed = approach(player.speed, targetSpeed, speedRate * dt);
+        const targetAngle = joystickAngle();
+        const turnFactor = 0.42 + Math.min(Math.abs(player.speed) / player.maxSpeed, 1) * 0.78;
+        player.angle = approachAngle(player.angle, targetAngle, JOYSTICK_TURN_RATE * turnFactor * dt);
+      } else if (keys.has("ArrowUp")) {
         player.speed += player.acceleration * dt;
       } else if (keys.has("ArrowDown")) {
         player.speed -= player.brake * dt;
@@ -1663,7 +1694,7 @@
       const moving = Math.abs(player.speed) > CAR_PHYSICS.playerMinMoveSpeed;
       if (moving) {
         const steer = (1.35 + Math.min(Math.abs(player.speed) / player.maxSpeed, 1) * 1.35) * dt;
-        player.angle += turn * steer * Math.sign(player.speed);
+        if (!joystickDriving) player.angle += turn * steer * Math.sign(player.speed);
 
         const distance = Math.abs(player.speed) * dt;
         const steps = Math.max(1, Math.ceil(distance / 7));
@@ -2623,10 +2654,11 @@
       minimapCanvas.classList.toggle("visible", visible);
       if (!visible) return;
 
-      const scale = MINIMAP_SIZE / WORLD;
-      minimapCtx.clearRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+      const scale = minimapSize / WORLD;
+      const dotScale = minimapSize / MINIMAP_SIZE;
+      minimapCtx.clearRect(0, 0, minimapSize, minimapSize);
       minimapCtx.fillStyle = "#20252a";
-      minimapCtx.fillRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+      minimapCtx.fillRect(0, 0, minimapSize, minimapSize);
 
       minimapCtx.fillStyle = "rgba(188, 168, 111, 0.25)";
       minimapCtx.strokeStyle = "rgba(255, 244, 210, 0.15)";
@@ -2644,13 +2676,13 @@
           minimapCtx,
           police.x * scale,
           police.y * scale,
-          police.chasing ? 3.2 : 2.4,
+          (police.chasing ? 3.2 : 2.4) * dotScale,
           "#e33232",
           police.chasing ? "#fff2cf" : null
         );
       }
 
-      drawMinimapDot(minimapCtx, player.x * scale, player.y * scale, 3.5, "#f1c343", "#2b2111");
+      drawMinimapDot(minimapCtx, player.x * scale, player.y * scale, 3.5 * dotScale, "#f1c343", "#2b2111");
     }
 
     function updateHud() {
@@ -2705,23 +2737,71 @@
       if (event.key.startsWith("Arrow")) keys.delete(event.key);
     });
 
-    for (const button of document.querySelectorAll(".control")) {
-      const key = button.dataset.key;
-      const press = event => {
-        event.preventDefault();
-        keys.add(key);
-        button.classList.add("active");
-      };
-      const release = event => {
-        event.preventDefault();
-        keys.delete(key);
-        button.classList.remove("active");
-      };
-      button.addEventListener("pointerdown", press);
-      button.addEventListener("pointerup", release);
-      button.addEventListener("pointercancel", release);
-      button.addEventListener("pointerleave", release);
+    function joystickAngle() {
+      return Math.atan2(joystick.y, joystick.x);
     }
+
+    function resetJoystick() {
+      joystick.active = false;
+      joystick.pointerId = null;
+      joystick.x = 0;
+      joystick.y = 0;
+      joystick.strength = 0;
+      joystickEl.classList.remove("active");
+      joystickKnobEl.style.setProperty("--knob-x", "0px");
+      joystickKnobEl.style.setProperty("--knob-y", "0px");
+    }
+
+    function updateJoystick(event) {
+      const rect = joystickEl.getBoundingClientRect();
+      const knobRect = joystickKnobEl.getBoundingClientRect();
+      const maxTravel = Math.max(1, (rect.width - knobRect.width) / 2);
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      let dx = event.clientX - centerX;
+      let dy = event.clientY - centerY;
+      const distance = Math.hypot(dx, dy);
+
+      if (distance > maxTravel) {
+        dx = dx / distance * maxTravel;
+        dy = dy / distance * maxTravel;
+      }
+
+      joystick.x = dx / maxTravel;
+      joystick.y = dy / maxTravel;
+      joystick.strength = clamp(Math.hypot(joystick.x, joystick.y), 0, 1);
+      if (joystick.strength < JOYSTICK_DEAD_ZONE) joystick.strength = 0;
+      joystickKnobEl.style.setProperty("--knob-x", dx.toFixed(1) + "px");
+      joystickKnobEl.style.setProperty("--knob-y", dy.toFixed(1) + "px");
+    }
+
+    joystickEl.addEventListener("pointerdown", event => {
+      event.preventDefault();
+      joystick.active = true;
+      joystick.pointerId = event.pointerId;
+      joystickEl.classList.add("active");
+      joystickEl.setPointerCapture(event.pointerId);
+      updateJoystick(event);
+    });
+
+    joystickEl.addEventListener("pointermove", event => {
+      if (!joystick.active || event.pointerId !== joystick.pointerId) return;
+      event.preventDefault();
+      updateJoystick(event);
+    });
+
+    const releaseJoystick = event => {
+      if (event.pointerId !== joystick.pointerId) return;
+      event.preventDefault();
+      if (joystickEl.hasPointerCapture(event.pointerId)) joystickEl.releasePointerCapture(event.pointerId);
+      resetJoystick();
+    };
+
+    joystickEl.addEventListener("pointerup", releaseJoystick);
+    joystickEl.addEventListener("pointercancel", releaseJoystick);
+    joystickEl.addEventListener("lostpointercapture", event => {
+      if (event.pointerId === joystick.pointerId) resetJoystick();
+    });
 
     debugRecorderEl.addEventListener("pointerdown", event => {
       if (debugRecorder.mode !== "selecting") return;

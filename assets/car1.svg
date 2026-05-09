@@ -1,0 +1,259 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="199" height="367" viewBox="25 22 199 367" role="img" aria-label="Top view red car">
+  <defs>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="6" result="blur"/>
+      <feOffset dx="0" dy="7" result="offset"/>
+      <feColorMatrix in="offset" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .28 0"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="smallBlur" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3.2"/>
+    </filter>
+
+    <linearGradient id="bodyGrad" x1="124" y1="22" x2="124" y2="387" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f03a20"/>
+      <stop offset=".22" stop-color="#dd2e18"/>
+      <stop offset=".54" stop-color="#d52c16"/>
+      <stop offset=".78" stop-color="#cf2613"/>
+      <stop offset="1" stop-color="#a31512"/>
+    </linearGradient>
+
+    <linearGradient id="edgeShade" x1="45" y1="205" x2="203" y2="205" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6f0c0d"/>
+      <stop offset=".08" stop-color="#b71d17"/>
+      <stop offset=".20" stop-color="#dd2e18"/>
+      <stop offset=".50" stop-color="#d83019"/>
+      <stop offset=".80" stop-color="#dd2e18"/>
+      <stop offset=".92" stop-color="#b71d17"/>
+      <stop offset="1" stop-color="#6f0c0d"/>
+    </linearGradient>
+
+    <linearGradient id="glassGrad" x1="124" y1="114" x2="124" y2="351" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#222a33"/>
+      <stop offset=".5" stop-color="#1a2028"/>
+      <stop offset="1" stop-color="#0f1419"/>
+    </linearGradient>
+
+    <linearGradient id="sidePanelGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#273038"/>
+      <stop offset="1" stop-color="#161a20"/>
+    </linearGradient>
+
+    <linearGradient id="windowReflection" x1="60" y1="120" x2="185" y2="195" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#54606d" stop-opacity=".28"/>
+      <stop offset=".25" stop-color="#3e4854" stop-opacity=".18"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+
+    <linearGradient id="lightGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".6" stop-color="#f7f7f7"/>
+      <stop offset="1" stop-color="#b9c6cd"/>
+    </linearGradient>
+
+    <radialGradient id="bodyShine" cx="50%" cy="24%" r="75%">
+      <stop offset="0" stop-color="#ff8d78" stop-opacity=".28"/>
+      <stop offset=".45" stop-color="#ff8d78" stop-opacity=".10"/>
+      <stop offset="1" stop-color="#ff8d78" stop-opacity="0"/>
+    </radialGradient>
+
+    <clipPath id="carClip">
+      <path d="M124 24
+               C103 24 79 26 64 37
+               C51 47 46 67 46 98
+               L46 312
+               C46 343 50 364 63 375
+               C78 386 102 388 124 388
+               C146 388 170 386 185 375
+               C198 364 202 343 202 312
+               L202 98
+               C202 67 197 47 184 37
+               C169 26 145 24 124 24 Z"/>
+    </clipPath>
+  </defs>
+
+  <ellipse cx="124" cy="211" rx="85" ry="170" fill="#000" opacity=".12" filter="url(#smallBlur)"/>
+
+  <g filter="url(#softShadow)">
+    <!-- main silhouette -->
+    <path d="M124 24
+             C103 24 79 26 64 37
+             C51 47 46 67 46 98
+             L46 312
+             C46 343 50 364 63 375
+             C78 386 102 388 124 388
+             C146 388 170 386 185 375
+             C198 364 202 343 202 312
+             L202 98
+             C202 67 197 47 184 37
+             C169 26 145 24 124 24 Z" fill="url(#edgeShade)"/>
+
+    <!-- upper nose details -->
+    <path d="M70 38
+             C90 28 106 28 124 28
+             C142 28 158 28 178 38
+             C187 42 194 50 198 63
+             C184 46 159 39 124 39
+             C89 39 64 46 50 63
+             C54 50 61 42 70 38 Z" fill="#8f1312" opacity=".55"/>
+
+    <path d="M64 30
+             C80 25 99 22 124 22
+             C149 22 168 25 184 30
+             C177 29 169 29 163 31
+             C152 34 137 36 124 36
+             C111 36 96 34 85 31
+             C79 29 71 29 64 30 Z" fill="#64090b" opacity=".55"/>
+
+    <!-- body fill -->
+    <path d="M124 28
+             C104 28 81 30 68 40
+             C56 50 52 69 52 98
+             L52 312
+             C52 341 56 360 68 370
+             C81 380 104 384 124 384
+             C144 384 167 380 180 370
+             C192 360 196 341 196 312
+             L196 98
+             C196 69 192 50 180 40
+             C167 30 144 28 124 28 Z" fill="url(#bodyGrad)"/>
+
+    <!-- subtle body shine -->
+    <path d="M124 28
+             C104 28 81 30 68 40
+             C56 50 52 69 52 98
+             L52 312
+             C52 341 56 360 68 370
+             C81 380 104 384 124 384
+             C144 384 167 380 180 370
+             C192 360 196 341 196 312
+             L196 98
+             C196 69 192 50 180 40
+             C167 30 144 28 124 28 Z" fill="url(#bodyShine)" opacity=".75"/>
+
+    <!-- headlight housings -->
+    <path d="M68 36 C62 40 57 46 54 57 C57 56 60 54 64 51 C66 45 67 41 68 36 Z" fill="#101419" opacity=".95"/>
+    <path d="M180 36 C186 40 191 46 194 57 C191 56 188 54 184 51 C182 45 181 41 180 36 Z" fill="#101419" opacity=".95"/>
+    <path d="M67 37 C62 40 58 45 55 54 C60 52 65 49 70 42 C71 40 70 37 67 37 Z" fill="url(#lightGrad)"/>
+    <path d="M181 37 C186 40 190 45 193 54 C188 52 183 49 178 42 C177 40 178 37 181 37 Z" fill="url(#lightGrad)"/>
+    <path d="M72 33 C87 30 102 29 124 29 C146 29 161 30 176 33" fill="none" stroke="#12151a" stroke-width="4.5" stroke-linecap="round" opacity=".85"/>
+    <circle cx="124" cy="31.5" r="4.4" fill="#080b0d"/>
+
+    <!-- windshield -->
+    <path d="M60 132
+             C61 118 72 112 92 108
+             C105 106 114 105 124 105
+             C134 105 143 106 156 108
+             C176 112 187 118 188 132
+             L186 196
+             C166 198 145 199 124 199
+             C103 199 82 198 62 196 Z" fill="url(#glassGrad)" stroke="#101418" stroke-width="1.8"/>
+    <path d="M60 132 C69 126 88 121 124 121 C160 121 179 126 188 132" fill="none" stroke="#2a3540" stroke-width="3.2" opacity=".40"/>
+    <path d="M60 191 C84 194 104 195 124 195 C144 195 164 194 188 191" fill="none" stroke="#35414d" stroke-width="1.8" opacity=".35"/>
+    <path d="M66 115 C91 109 109 108 124 108 C139 108 157 109 182 115" fill="none" stroke="#0c0f12" stroke-width="3.5" opacity=".88" stroke-linecap="round"/>
+    <path d="M60 132 L62 196" fill="none" stroke="#0d1014" stroke-width="2" opacity=".55"/>
+    <path d="M188 132 L186 196" fill="none" stroke="#0d1014" stroke-width="2" opacity=".55"/>
+
+    <!-- windshield reflections -->
+    <path d="M72 114 C96 110 116 110 124 110 C145 110 160 113 176 118 L179 191 C161 193 145 194 124 194 C103 194 87 193 69 191 Z" fill="url(#windowReflection)" opacity=".6"/>
+
+    <!-- interior hints -->
+    <ellipse cx="100" cy="140" rx="11" ry="3" fill="#0b0d0f" opacity=".75"/>
+    <ellipse cx="148" cy="140" rx="11" ry="3" fill="#0b0d0f" opacity=".75"/>
+    <path d="M116 144 C119 161 117 175 114 186" fill="none" stroke="#11161b" stroke-width="2.2" opacity=".55"/>
+    <circle cx="159" cy="158" r="20" fill="#242e37" opacity=".6"/>
+    <rect x="114" y="184" width="20" height="8" rx="1.6" fill="#e8e8e8" opacity=".32"/>
+    <rect x="116" y="191" width="15" height="16" rx="2" fill="#0a0d10" opacity=".8"/>
+    <path d="M71 185 C90 190 104 193 124 193 C144 193 158 190 177 185" fill="none" stroke="#090d10" stroke-width="2" opacity=".5"/>
+    <path d="M73 203 C93 204 106 205 124 205 C142 205 155 204 175 203" fill="none" stroke="#121820" stroke-width="1.5" opacity=".25"/>
+
+    <!-- mirrors -->
+    <path d="M46 175 C37 177 30 181 26 186 C24 189 25 192 28 193 C35 193 43 188 51 184 Z" fill="#d82d17"/>
+    <path d="M202 175 C211 177 218 181 222 186 C224 189 223 192 220 193 C213 193 205 188 197 184 Z" fill="#d82d17"/>
+    <path d="M28 193 C34 193 41 190 47 187" fill="none" stroke="#82100d" stroke-width="2" opacity=".55"/>
+    <path d="M220 193 C214 193 207 190 201 187" fill="none" stroke="#82100d" stroke-width="2" opacity=".55"/>
+
+    <!-- side insets -->
+    <path d="M56 124
+             C53 131 52 144 52 158
+             L52 236
+             C52 248 53 257 56 263
+             C61 257 66 247 69 236
+             L69 151
+             C66 140 61 130 56 124 Z" fill="#101316" opacity=".92"/>
+    <path d="M192 124
+             C195 131 196 144 196 158
+             L196 236
+             C196 248 195 257 192 263
+             C187 257 182 247 179 236
+             L179 151
+             C182 140 187 130 192 124 Z" fill="#101316" opacity=".92"/>
+
+    <path d="M59 127
+             C57 135 56 147 56 159
+             L56 234
+             C56 242 57 249 59 255
+             C63 249 66 243 69 234
+             L69 152
+             C66 143 63 135 59 127 Z" fill="url(#sidePanelGrad)"/>
+    <path d="M189 127
+             C191 135 192 147 192 159
+             L192 234
+             C192 242 191 249 189 255
+             C185 249 182 243 179 234
+             L179 152
+             C182 143 185 135 189 127 Z" fill="url(#sidePanelGrad)"/>
+
+    <path d="M58 252 C60 256 63 260 67 263 L69 248 C65 247 61 248 58 252 Z" fill="#06080a" opacity=".95"/>
+    <path d="M190 252 C188 256 185 260 181 263 L179 248 C183 247 187 248 190 252 Z" fill="#06080a" opacity=".95"/>
+
+    <path d="M59 268
+             C56 275 55 286 55 299
+             C55 314 57 326 60 333
+             C64 327 68 317 69 303
+             L69 282
+             C68 277 64 271 59 268 Z" fill="#0e1215"/>
+    <path d="M189 268
+             C192 275 193 286 193 299
+             C193 314 191 326 188 333
+             C184 327 180 317 179 303
+             L179 282
+             C180 277 184 271 189 268 Z" fill="#0e1215"/>
+    <path d="M62 270 C60 277 59 289 59 300 C59 311 60 320 62 326 C65 320 67 313 68 300 L68 284 C67 278 65 273 62 270 Z" fill="#273038" opacity=".82"/>
+    <path d="M186 270 C188 277 189 289 189 300 C189 311 188 320 186 326 C183 320 181 313 180 300 L180 284 C181 278 183 273 186 270 Z" fill="#273038" opacity=".82"/>
+
+    <!-- roof/body panel lines -->
+    <path d="M73 69 C89 62 104 60 124 60 C144 60 159 62 175 69" fill="none" stroke="#932018" stroke-width="1.8" opacity=".45"/>
+    <circle cx="92" cy="118" r="1.9" fill="#8f1513" opacity=".6"/>
+    <circle cx="156" cy="118" r="1.9" fill="#8f1513" opacity=".6"/>
+    <circle cx="124" cy="304" r="2.1" fill="#7c1211" opacity=".75"/>
+    <path d="M79 354 C92 357 108 358 124 358 C140 358 156 357 169 354" fill="none" stroke="#b51f15" stroke-width="2.5" opacity=".55"/>
+
+    <!-- rear window and bumper -->
+    <path d="M67 337
+             C77 332 95 329 124 329
+             C153 329 171 332 181 337
+             C183 341 183 345 181 349
+             C171 353 153 355 124 355
+             C95 355 77 353 67 349
+             C65 345 65 341 67 337 Z" fill="url(#glassGrad)" stroke="#12161a" stroke-width="1.6"/>
+    <path d="M67 337 C76 342 94 345 124 345 C154 345 172 342 181 337" fill="none" stroke="#2a333c" stroke-width="2" opacity=".35"/>
+    <path d="M78 353 C96 354 110 354 124 354 C138 354 152 354 170 353" fill="none" stroke="#0b0e10" stroke-width="3" opacity=".45" stroke-linecap="round"/>
+
+    <path d="M55 337 C55 350 61 362 72 370 C62 367 55 361 49 350 C46 344 47 340 55 337 Z" fill="#5f080b" opacity=".82"/>
+    <path d="M193 337 C193 350 187 362 176 370 C186 367 193 361 199 350 C202 344 201 340 193 337 Z" fill="#5f080b" opacity=".82"/>
+    <path d="M61 370 C78 375 98 377 124 377 C150 377 170 375 187 370" fill="none" stroke="#390406" stroke-width="4" opacity=".55" stroke-linecap="round"/>
+    <path d="M118 357 C121 361 127 361 130 357" fill="none" stroke="#390406" stroke-width="4" opacity=".75" stroke-linecap="round"/>
+
+    <!-- global clipped edge shading -->
+    <g clip-path="url(#carClip)">
+      <ellipse cx="54" cy="206" rx="20" ry="180" fill="#410507" opacity=".20"/>
+      <ellipse cx="194" cy="206" rx="20" ry="180" fill="#410507" opacity=".20"/>
+      <ellipse cx="124" cy="390" rx="86" ry="28" fill="#3d0405" opacity=".20"/>
+    </g>
+  </g>
+</svg>

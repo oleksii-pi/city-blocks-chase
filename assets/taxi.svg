@@ -1,0 +1,189 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="237" height="515" viewBox="38 22 237 515" role="img" aria-label="Top view yellow taxi cab rotated 90 degrees counterclockwise">
+  <defs>
+    <filter id="softShadow" x="-20%" y="-30%" width="140%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="9" result="blur"/>
+      <feOffset dx="-5" dy="9" result="offset"/>
+      <feColorMatrix in="offset" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .25 0"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="smallShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.2"/>
+    </filter>
+    <linearGradient id="bodyGrad" x1="34" y1="156" x2="541" y2="156" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff9809"/>
+      <stop offset=".17" stop-color="#ffd44a"/>
+      <stop offset=".48" stop-color="#ffd54c"/>
+      <stop offset=".75" stop-color="#fbb31b"/>
+      <stop offset="1" stop-color="#ffc42e"/>
+    </linearGradient>
+    <linearGradient id="hoodGrad" x1="420" y1="156" x2="541" y2="156" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f2a20b"/>
+      <stop offset=".45" stop-color="#f7b41c"/>
+      <stop offset="1" stop-color="#ffd04a"/>
+    </linearGradient>
+    <linearGradient id="rearGrad" x1="34" y1="156" x2="126" y2="156" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff7a00"/>
+      <stop offset=".48" stop-color="#ffbc21"/>
+      <stop offset="1" stop-color="#ffd64b"/>
+    </linearGradient>
+    <linearGradient id="glassGrad" x1="58" y1="156" x2="424" y2="156" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#303030"/>
+      <stop offset=".55" stop-color="#191919"/>
+      <stop offset="1" stop-color="#292929"/>
+    </linearGradient>
+    <linearGradient id="signGrad" x1="255" y1="106" x2="294" y2="205" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffd82e"/>
+      <stop offset=".45" stop-color="#fff170"/>
+      <stop offset="1" stop-color="#ffc330"/>
+    </linearGradient>
+    <radialGradient id="shine" cx="50%" cy="23%" r="75%">
+      <stop offset="0" stop-color="#fff273" stop-opacity=".55"/>
+      <stop offset=".42" stop-color="#fff273" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#fff273" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <g transform="matrix(0 -1 1 0 0 566)">
+
+  <!-- drop shadow -->
+  <ellipse cx="279" cy="169" rx="249" ry="101" fill="#000" opacity=".15" filter="url(#smallShadow)"/>
+
+  <g filter="url(#softShadow)">
+    <!-- main silhouette -->
+    <path d="M54.8,61.5
+             C79.5,43.7 143.7,49.6 205.5,49.7
+             C278.1,49.7 353.8,51.5 421.4,49.4
+             C471.2,47.9 521.4,55.2 532.9,85.6
+             C540.6,106.1 544.0,136.4 544.0,155.4
+             C544.0,174.5 540.4,204.6 532.7,226.0
+             C521.1,258.3 468.7,263.1 421.0,260.3
+             C352.7,256.4 278.8,258.0 205.3,258.9
+             C142.3,259.6 78.3,268.3 54.9,249.9
+             C31.2,231.4 31.2,80.1 54.8,61.5 Z" fill="url(#bodyGrad)"/>
+
+    <!-- left/rear orange wrap -->
+    <path d="M56.8,62.4 C43.3,75.8 41.8,237.0 56.2,250.1
+             C45.3,245.9 37.3,232.0 34.4,212.5
+             C28.8,174.4 29.1,103.1 36.5,82.3
+             C40.4,71.2 47.7,64.5 56.8,62.4 Z" fill="url(#rearGrad)" opacity=".96"/>
+    <path d="M51.9,69.1 C55.7,55.7 76.3,50.3 111.6,49.1" fill="none" stroke="#ff2f00" stroke-width="4.5" stroke-linecap="round" opacity=".82"/>
+    <path d="M51.7,240.5 C55.8,254.5 75.8,260.5 109.8,260.1" fill="none" stroke="#ff2f00" stroke-width="4.5" stroke-linecap="round" opacity=".62"/>
+
+    <!-- front hood overlay -->
+    <path d="M421.4,49.4 C471.2,47.9 521.4,55.2 532.9,85.6
+             C540.6,106.1 544.0,136.4 544.0,155.4
+             C544.0,174.5 540.4,204.6 532.7,226.0
+             C521.1,258.3 468.7,263.1 421.0,260.3
+             C426.3,226.4 427.7,193.4 427.8,155.8
+             C427.9,118.1 426.0,84.3 421.4,49.4 Z" fill="url(#hoodGrad)" opacity=".72"/>
+    <path d="M436.5,72.6 C465.2,66.9 502.0,70.6 522.0,92.3" fill="none" stroke="#ffcc35" stroke-width="3" opacity=".45"/>
+    <path d="M435.1,240.2 C466.2,245.7 503.6,240.3 523.8,218.8" fill="none" stroke="#ffb31a" stroke-width="3" opacity=".35"/>
+
+    <!-- side mirrors -->
+    <path d="M352.2,38.4 C365.8,36.8 372.0,51.9 380.0,60.2
+             C370.4,59.3 360.7,57.1 353.5,51.1
+             C350.1,48.3 348.8,41.2 352.2,38.4 Z" fill="#ffbb1a"/>
+    <path d="M352.5,273.8 C366.0,275.5 372.5,260.3 381.2,251.8
+             C371.2,253.2 361.0,255.5 353.9,261.1
+             C350.3,264.0 349.1,271.0 352.5,273.8 Z" fill="#ffb019"/>
+
+    <!-- side black running boards -->
+    <path d="M146.3,59.0 C184.4,61.5 269.1,61.6 350.0,60.4
+             C360.9,60.3 374.9,60.6 385.1,62.6
+             C379.6,67.3 375.2,69.5 363.0,70.3
+             C293.7,70.2 217.3,70.0 148.0,70.2
+             C138.4,69.5 137.7,62.6 146.3,59.0 Z" fill="#212121"/>
+    <path d="M146.5,234.5 C213.7,234.9 293.3,234.8 363.4,235.2
+             C375.8,236.0 380.8,238.4 386.1,243.3
+             C376.5,245.3 362.1,245.5 350.2,245.4
+             C269.4,244.4 184.1,244.1 145.7,246.2
+             C136.8,242.9 137.9,235.6 146.5,234.5 Z" fill="#202020"/>
+
+    <!-- glass: rear window -->
+    <path d="M74.0,75.1
+             C92.7,75.8 115.0,76.5 138.2,80.0
+             C133.0,119.2 132.8,195.3 137.3,231.1
+             C116.0,233.5 93.9,236.2 75.5,236.8
+             C65.3,232.2 61.6,215.4 60.5,195.7
+             C58.8,165.5 59.6,123.6 62.3,99.4
+             C63.8,85.8 67.1,77.4 74.0,75.1 Z" fill="url(#glassGrad)"/>
+    <path d="M75.3,76.0 C66.4,80.8 62.4,111.1 61.6,148.2" fill="none" stroke="#3f3f3f" stroke-opacity=".26" stroke-width="3"/>
+
+    <!-- glass: windshield -->
+    <path d="M333.2,75.7
+             C354.9,69.8 389.8,65.6 411.6,69.5
+             C421.3,91.0 425.4,121.9 425.3,155.8
+             C425.2,190.5 421.1,221.4 407.4,243.2
+             C384.3,243.0 356.2,238.2 331.7,232.5
+             C337.9,191.5 340.0,116.6 333.2,75.7 Z" fill="url(#glassGrad)"/>
+    <path d="M410.9,70.1 C421.5,95.4 424.0,123.2 424.2,154.8 C424.5,188.3 420.0,218.4 407.2,242.6" fill="none" stroke="#000" stroke-opacity=".32" stroke-width="2.7"/>
+    <path d="M334.1,75.9 C340.2,117.6 338.6,190.5 332.0,232.2" fill="none" stroke="#000" stroke-opacity=".24" stroke-width="2"/>
+
+    <!-- cabin/roof gloss -->
+    <path d="M72.5,57.8 C125.8,48.4 214.3,53.1 282.7,54.0
+             C327.1,54.6 371.8,55.2 415.1,53.4
+             C372.4,49.2 295.3,48.1 219.4,47.8
+             C146.1,47.6 90.7,43.3 72.5,57.8 Z" fill="#fff283" opacity=".23"/>
+    <path d="M64.9,253.8 C119.2,266.1 196.9,255.1 280.0,256.4
+             C325.1,257.1 372.5,256.6 416.2,260.1
+             C373.9,265.7 294.4,263.8 220.0,263.5
+             C142.5,263.2 86.0,270.3 64.9,253.8 Z" fill="#c86b00" opacity=".12"/>
+
+    <!-- taxi sign -->
+    <g>
+      <rect x="253.7" y="105.4" width="39.3" height="99.8" rx="3.0" fill="#6e5510" opacity=".32" transform="translate(2 2)"/>
+      <rect x="254.8" y="105.0" width="38.5" height="99.6" rx="3.1" fill="url(#signGrad)" stroke="#987515" stroke-width="2.1"/>
+      <rect x="260.3" y="111.5" width="27.5" height="86.4" rx="1.7" fill="none" stroke="#fff79b" stroke-width="2.1" opacity=".55"/>
+      <path d="M259.8,197.9 C266.2,199.8 278.1,199.9 287.9,197.4" stroke="#fff9a3" stroke-width="2.5" opacity=".75" stroke-linecap="round"/>
+      <text x="274.6" y="176" transform="rotate(-90 274.6 176)" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" letter-spacing="4.3" fill="#2a2511">TAXI</text>
+    </g>
+
+    <!-- checker marks -->
+    <g fill="#050505">
+      <!-- left checker -->
+      <rect x="188.3" y="112.0" width="11.2" height="11.2"/>
+      <rect x="199.5" y="123.2" width="11.2" height="11.2"/>
+      <rect x="188.3" y="134.4" width="11.2" height="11.2"/>
+      <rect x="199.5" y="145.6" width="11.2" height="11.2"/>
+      <rect x="188.3" y="156.8" width="11.2" height="11.2"/>
+      <rect x="199.5" y="168.0" width="11.2" height="11.2"/>
+      <rect x="188.3" y="179.2" width="11.2" height="11.2"/>
+      <rect x="199.5" y="190.4" width="11.2" height="11.2"/>
+      <!-- right checker -->
+      <rect x="458.4" y="112.0" width="11.2" height="11.2"/>
+      <rect x="469.6" y="123.2" width="11.2" height="11.2"/>
+      <rect x="458.4" y="134.4" width="11.2" height="11.2"/>
+      <rect x="469.6" y="145.6" width="11.2" height="11.2"/>
+      <rect x="458.4" y="156.8" width="11.2" height="11.2"/>
+      <rect x="469.6" y="168.0" width="11.2" height="11.2"/>
+      <rect x="458.4" y="179.2" width="11.2" height="11.2"/>
+      <rect x="469.6" y="190.4" width="11.2" height="11.2"/>
+    </g>
+
+    <!-- small roof details -->
+    <path d="M153.5,156.5 C151.9,151.2 155.3,147.2 161.5,148.2" fill="none" stroke="#e7ad1b" stroke-width="2.2" opacity=".42" stroke-linecap="round"/>
+    <path d="M318.0,101.4 C325.0,99.8 328.5,103.0 328.0,108.5" fill="none" stroke="#df9c09" stroke-width="2.2" opacity=".32"/>
+
+    <!-- headlights and front dark seam -->
+    <path d="M499.7,61.2 C518.3,65.7 530.5,76.6 533.2,91.5
+             C523.8,82.2 515.0,73.8 500.6,66.0 Z" fill="#ffffff" opacity=".88"/>
+    <path d="M500.0,249.5 C518.6,245.0 531.0,233.5 533.6,220.7
+             C523.7,229.7 515.1,238.1 500.7,244.5 Z" fill="#ffffff" opacity=".88"/>
+    <path d="M536.4,101.8 C540.2,122.8 540.5,186.8 536.1,209.4" fill="none" stroke="#101010" stroke-width="4.2" stroke-linecap="round"/>
+    <path d="M429.3,69.6 C442.8,101.5 447.3,209.5 427.7,241.9" fill="none" stroke="#efa30a" stroke-width="2" opacity=".28"/>
+
+    <!-- global warm highlight -->
+    <path d="M54.8,61.5
+             C79.5,43.7 143.7,49.6 205.5,49.7
+             C278.1,49.7 353.8,51.5 421.4,49.4
+             C471.2,47.9 521.4,55.2 532.9,85.6
+             C540.6,106.1 544.0,136.4 544.0,155.4
+             C544.0,174.5 540.4,204.6 532.7,226.0
+             C521.1,258.3 468.7,263.1 421.0,260.3
+             C352.7,256.4 278.8,258.0 205.3,258.9
+             C142.3,259.6 78.3,268.3 54.9,249.9
+             C31.2,231.4 31.2,80.1 54.8,61.5 Z" fill="url(#shine)" opacity=".45"/>
+  </g>
+
+  </g>
+</svg>

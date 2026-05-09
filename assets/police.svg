@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="540" height="1104" viewBox="0 0 540 1104">
+  <defs>
+    <filter id="shadow" x="-25%" y="-15%" width="150%" height="130%">
+      <feOffset dx="12" dy="18" in="SourceAlpha" result="off"/>
+      <feGaussianBlur in="off" stdDeviation="14" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .32 0" result="shade"/>
+      <feMerge><feMergeNode in="shade"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <linearGradient id="body" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#34424a"/>
+      <stop offset=".52" stop-color="#314354"/>
+      <stop offset="1" stop-color="#303d43"/>
+    </linearGradient>
+    <linearGradient id="darkblue" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#354c6c"/>
+      <stop offset=".55" stop-color="#314966"/>
+      <stop offset="1" stop-color="#2e435d"/>
+    </linearGradient>
+    <linearGradient id="whitepanel" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#f8fbfa"/>
+      <stop offset=".34" stop-color="#edf1f0"/>
+      <stop offset=".66" stop-color="#e8edec"/>
+      <stop offset="1" stop-color="#f9fbfa"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#273c5d"/>
+      <stop offset=".55" stop-color="#1d2b39"/>
+      <stop offset="1" stop-color="#182126"/>
+    </linearGradient>
+    <linearGradient id="blackglass" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#393d3e"/>
+      <stop offset=".45" stop-color="#181a1a"/>
+      <stop offset="1" stop-color="#0e1010"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#ffe389"/>
+      <stop offset="1" stop-color="#f6b84b"/>
+    </linearGradient>
+    <clipPath id="clipCar">
+      <path d="M270 5 C151 5 86 29 62 92 C51 120 48 150 48 191 L48 916 C48 1036 105 1098 270 1098 C435 1098 492 1036 492 916 L492 191 C492 150 489 120 478 92 C454 29 389 5 270 5 Z"/>
+    </clipPath>
+  </defs>
+
+  <g filter="url(#shadow)">
+    <!-- outer car -->
+    <path d="M270 5 C151 5 86 29 62 92 C51 120 48 150 48 191 L48 916 C48 1036 105 1098 270 1098 C435 1098 492 1036 492 916 L492 191 C492 150 489 120 478 92 C454 29 389 5 270 5 Z" fill="url(#body)" stroke="#18212a" stroke-width="8"/>
+
+    <g clip-path="url(#clipCar)">
+      <!-- subtle body shading -->
+      <path d="M63 86 C91 33 151 15 270 15 C389 15 449 33 477 86 L477 1087 L63 1087 Z" fill="url(#body)"/>
+      <path d="M270 10 C247 189 247 387 267 546 C291 732 304 891 277 1095" fill="none" stroke="#253136" stroke-width="34" opacity=".18"/>
+      <path d="M92 64 C74 177 79 303 85 424 C91 555 88 758 74 985" fill="none" stroke="#1b2427" stroke-width="22" opacity=".42"/>
+      <path d="M448 64 C466 177 461 303 455 424 C449 555 452 758 466 985" fill="none" stroke="#1b2427" stroke-width="22" opacity=".42"/>
+
+      <!-- top headlight pockets -->
+      <path d="M86 22 C125 10 169 12 204 24 C183 56 139 74 84 92 C74 61 75 38 86 22 Z" fill="#55626a"/>
+      <path d="M454 22 C415 10 371 12 336 24 C357 56 401 74 456 92 C466 61 465 38 454 22 Z" fill="#55626a"/>
+      <path d="M80 56 C91 40 102 29 124 22 C117 52 104 72 79 86 Z" fill="url(#amber)"/>
+      <path d="M460 56 C449 40 438 29 416 22 C423 52 436 72 461 86 Z" fill="url(#amber)"/>
+      <path d="M121 27 L158 20 C164 19 170 25 168 31 L164 45 C162 51 156 52 151 52 L119 59 C113 60 108 55 109 49 L112 35 C113 31 117 28 121 27 Z" fill="#c6d9de" opacity=".82"/>
+      <path d="M86 53 L120 45 L117 68 L82 82 Z" fill="#d5e5e7" opacity=".78"/>
+      <path d="M419 27 L382 20 C376 19 370 25 372 31 L376 45 C378 51 384 52 389 52 L421 59 C427 60 432 55 431 49 L428 35 C427 31 423 28 419 27 Z" fill="#c6d9de" opacity=".82"/>
+      <path d="M454 53 L420 45 L423 68 L458 82 Z" fill="#d5e5e7" opacity=".78"/>
+
+      <!-- upper police light -->
+      <rect x="192" y="15" width="156" height="24" rx="4" fill="#26323a"/>
+      <path d="M196 18 L231 18 L226 35 L196 35 Z" fill="#1c262e" opacity=".75"/>
+      <rect x="233" y="18" width="38" height="18" rx="5" fill="#0556fa"/>
+      <rect x="275" y="18" width="38" height="18" rx="5" fill="#fb2c39"/>
+      <path d="M239 20 H264" stroke="#4d8cff" stroke-width="3" opacity=".55"/>
+      <path d="M281 20 H305" stroke="#ff8088" stroke-width="3" opacity=".55"/>
+
+      <!-- inverted upper POLICE -->
+      <text x="270" y="209" text-anchor="middle" font-family="Impact, 'Arial Black', sans-serif" font-size="96" font-weight="900" letter-spacing="4" fill="#14191d" opacity=".45" transform="rotate(180 270 163)">POLICE</text>
+      <text x="270" y="200" text-anchor="middle" font-family="Impact, 'Arial Black', sans-serif" font-size="96" font-weight="900" letter-spacing="4" fill="#eef3f4" stroke="#171e23" stroke-width="2.5" transform="rotate(180 270 163)">POLICE</text>
+
+      <!-- top windshield / cowl -->
+      <path d="M110 292 C152 270 202 260 270 256 C338 260 388 270 430 292 L456 342 C390 318 333 309 270 309 C207 309 150 318 84 342 Z" fill="url(#glass)"/>
+      <path d="M106 299 C157 281 216 274 270 273 C324 274 383 281 434 299" fill="none" stroke="#142029" stroke-width="7" opacity=".75"/>
+      <path d="M153 316 C197 311 234 310 270 310" fill="none" stroke="#121a20" stroke-width="4" opacity=".75"/>
+      <path d="M270 310 C307 310 343 313 387 318" fill="none" stroke="#121a20" stroke-width="4" opacity=".75"/>
+      <path d="M120 306 C180 304 226 296 267 289" stroke="#253957" stroke-width="5" fill="none" opacity=".4"/>
+
+      <!-- mirrors -->
+      <path d="M6 380 C19 342 56 330 99 326 L100 379 Z" fill="#1b2432"/>
+      <path d="M534 380 C521 342 484 330 441 326 L440 379 Z" fill="#1b2432"/>
+      <path d="M74 328 L102 313 L121 416 L88 430 Z" fill="#f0f4f3"/>
+      <path d="M466 328 L438 313 L419 416 L452 430 Z" fill="#f0f4f3"/>
+
+      <!-- central white cockpit/roof -->
+      <path d="M86 344 C123 398 129 445 130 523 L130 795 C130 845 174 870 270 871 C366 870 410 845 410 795 L410 523 C411 445 417 398 454 344 L478 350 L450 847 C414 875 374 890 270 891 C166 890 126 875 90 847 L62 350 Z" fill="url(#whitepanel)"/>
+      <path d="M124 407 C157 386 212 375 270 375 C328 375 383 386 416 407 L422 803 C390 833 335 849 270 850 C205 849 150 833 118 803 Z" fill="#eff3f2"/>
+      <path d="M272 377 C242 483 233 614 252 738 C261 797 265 837 260 853" stroke="#cfd8d4" stroke-width="33" opacity=".5" fill="none"/>
+
+      <!-- blue side body panels -->
+      <path d="M89 352 L120 337 C137 410 146 458 146 520 L146 632 L91 632 Z" fill="url(#darkblue)"/>
+      <path d="M451 352 L420 337 C403 410 394 458 394 520 L394 632 L449 632 Z" fill="url(#darkblue)"/>
+      <path d="M80 641 L146 642 L146 805 L112 835 L80 811 Z" fill="url(#darkblue)"/>
+      <path d="M460 641 L394 642 L394 805 L428 835 L460 811 Z" fill="url(#darkblue)"/>
+      <path d="M54 420 C67 402 76 390 91 379 L91 619 C75 610 63 594 59 573 Z" fill="#1b1f20"/>
+      <path d="M486 420 C473 402 464 390 449 379 L449 619 C465 610 477 594 481 573 Z" fill="#1b1f20"/>
+      <path d="M55 665 C69 650 78 644 91 642 L91 815 C76 810 62 790 58 768 Z" fill="#1b1f20"/>
+      <path d="M485 665 C471 650 462 644 449 642 L449 815 C464 810 478 790 482 768 Z" fill="#1b1f20"/>
+      <path d="M90 632 L146 632" stroke="#8c9798" stroke-width="5"/>
+      <path d="M394 632 L450 632" stroke="#8c9798" stroke-width="5"/>
+
+      <!-- light bar on the roof -->
+      <rect x="140" y="519" width="260" height="54" rx="7" fill="#111415" stroke="#000" stroke-width="5"/>
+      <rect x="150" y="527" width="79" height="39" fill="#1766ff"/>
+      <rect x="229" y="527" width="101" height="39" fill="#55514e"/>
+      <rect x="330" y="527" width="60" height="39" fill="#ff3647"/>
+      <rect x="150" y="527" width="79" height="12" fill="#4090ff" opacity=".45"/>
+      <rect x="330" y="527" width="60" height="12" fill="#ff8990" opacity=".45"/>
+      <path d="M150 566 H390" stroke="#050506" stroke-width="3" opacity=".7"/>
+
+      <!-- 911 -->
+      <text x="270" y="728" text-anchor="middle" font-family="Impact, 'Arial Black', sans-serif" font-size="122" font-weight="900" fill="#202628" stroke="#111" stroke-width="1.5">911</text>
+      <path d="M157 770 C194 798 227 808 270 809 C313 808 346 798 383 770" fill="none" stroke="#d5dcd9" stroke-width="18" opacity=".65"/>
+
+      <!-- lower dark rear section -->
+      <path d="M84 850 C130 890 194 909 270 910 C346 909 410 890 456 850 L484 964 C491 1018 458 1070 411 1090 C365 1105 305 1100 270 1099 C235 1100 175 1105 129 1090 C82 1070 49 1018 56 964 Z" fill="#303f45"/>
+      <path d="M109 834 C155 870 210 884 270 885 C330 884 385 870 431 834 L413 908 C363 925 319 934 270 934 C221 934 177 925 127 908 Z" fill="#314865"/>
+      <path d="M92 961 C129 984 188 997 270 997 C352 997 411 984 448 961" stroke="#263036" stroke-width="26" opacity=".9" fill="none"/>
+      <text x="270" y="1049" text-anchor="middle" font-family="Impact, 'Arial Black', sans-serif" font-size="62" font-weight="900" letter-spacing="1.5" fill="#f2f4ee" stroke="#1b2227" stroke-width="2.2">POLICE</text>
+
+      <!-- rear lights and bumper strips -->
+      <path d="M82 1050 C98 1073 133 1092 188 1094 L188 1100 C126 1098 87 1084 69 1058 C63 1048 59 1037 58 1028 C67 1032 75 1040 82 1050 Z" fill="#ff2832"/>
+      <path d="M458 1050 C442 1073 407 1092 352 1094 L352 1100 C414 1098 453 1084 471 1058 C477 1048 481 1037 482 1028 C473 1032 465 1040 458 1050 Z" fill="#ff2832"/>
+      <path d="M66 1025 C78 1043 89 1054 105 1061 C93 1034 81 1015 69 1005 Z" fill="#ffc544"/>
+      <path d="M474 1025 C462 1043 451 1054 435 1061 C447 1034 459 1015 471 1005 Z" fill="#ffc544"/>
+      <path d="M90 1094 H188" stroke="#ff2b35" stroke-width="7" stroke-linecap="round"/>
+      <path d="M352 1094 H450" stroke="#ff2b35" stroke-width="7" stroke-linecap="round"/>
+
+      <!-- side door handles / black slots -->
+      <rect x="62" y="565" width="6" height="36" rx="2" fill="#1b2022"/>
+      <rect x="62" y="762" width="6" height="41" rx="2" fill="#1b2022"/>
+      <rect x="472" y="565" width="6" height="36" rx="2" fill="#1b2022"/>
+      <rect x="472" y="762" width="6" height="41" rx="2" fill="#1b2022"/>
+      <path d="M68 349 L89 356 L91 848 L70 832 Z" fill="#f8fbfa" opacity=".94"/>
+      <path d="M472 349 L451 356 L449 848 L470 832 Z" fill="#f8fbfa" opacity=".94"/>
+    </g>
+
+    <!-- crisp outer rim on top -->
+    <path d="M270 5 C151 5 86 29 62 92 C51 120 48 150 48 191 L48 916 C48 1036 105 1098 270 1098 C435 1098 492 1036 492 916 L492 191 C492 150 489 120 478 92 C454 29 389 5 270 5 Z" fill="none" stroke="#18212a" stroke-width="8"/>
+  </g>
+</svg>

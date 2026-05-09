@@ -477,8 +477,8 @@
 
     const palette = {
       grass: "#738f58",
-      road: "#2f3033",
-      roadDark: "#25262a",
+      road: "#3d3e42",
+      roadDark: "#303136",
       sidewalk: "#d6c392",
       sidewalkLight: "#ead9aa",
       curb: "#f7ead2",
@@ -494,6 +494,23 @@
       glassDark: "#397fa6",
       frame: "#fff0c8"
     };
+
+    const carSpriteAssets = {
+      taxi: loadCarSprite("assets/taxi.svg"),
+      police: loadCarSprite("assets/police.svg"),
+      car1: loadCarSprite("assets/car1.svg"),
+      car2: loadCarSprite("assets/car2.svg")
+    };
+    const trafficSpriteVariants = [
+      { asset: "car1", filter: "none", color: "#c84836" },
+      { asset: "car1", filter: "hue-rotate(124deg) saturate(1.18) brightness(0.96)", color: "#2f8f6b" },
+      { asset: "car1", filter: "hue-rotate(214deg) saturate(1.05) brightness(1.02)", color: "#4c6fd0" },
+      { asset: "car1", filter: "hue-rotate(62deg) saturate(1.28) brightness(1.06)", color: "#d49a32" },
+      { asset: "car2", filter: "hue-rotate(164deg) saturate(1.35) brightness(0.88)", color: "#3e748f" },
+      { asset: "car2", filter: "hue-rotate(296deg) saturate(1.42) brightness(0.95)", color: "#cf5f88" },
+      { asset: "car2", filter: "hue-rotate(34deg) saturate(1.12) brightness(0.92)", color: "#8d6b4c" },
+      { asset: "car2", filter: "saturate(0.2) brightness(1.06)", color: "#c7c0ab" }
+    ];
 
     const player = {
       x: 0,
@@ -866,7 +883,10 @@
       constructor(isPolice, existing) {
         this.id = carSerial++;
         this.isPolice = isPolice;
-        this.color = isPolice ? "#174ea6" : ["#c84836", "#2f8f6b", "#d49a32", "#6c79d8", "#cf5f88", "#c7c0ab", "#3e748f"][Math.floor(Math.random() * 7)];
+        const variant = trafficSpriteVariants[Math.floor(Math.random() * trafficSpriteVariants.length)];
+        this.spriteAsset = isPolice ? "police" : variant.asset;
+        this.spriteFilter = isPolice ? "none" : variant.filter;
+        this.color = isPolice ? "#174ea6" : variant.color;
         this.length = isPolice ? 30 : 27;
         this.width = 15;
         this.radius = isPolice ? 17 : 16;
@@ -1536,6 +1556,7 @@
       player.x = x;
       player.y = y;
       player.angle = 0;
+      player.renderAngle = 0;
       player.speed = 0;
     }
 
@@ -1929,7 +1950,9 @@
 
     function createCamera() {
       const speedFactor = Math.min(1, Math.abs(player.speed) / player.maxSpeed);
-      const zoom = 1.52 - speedFactor * 0.52;
+      const stoppedZoom = 2;
+      const highSpeedZoom = 1.3;
+      const zoom = stoppedZoom - speedFactor * (stoppedZoom - highSpeedZoom);
       return {
         x: player.x,
         y: player.y,
@@ -2539,19 +2562,28 @@
       return car.renderAngle ?? car.angle ?? 0;
     }
 
-    function drawCar(car, cam, isPlayer = false) {
-      if (!rectVisible(car.x - 35, car.y - 35, 70, 70, cam, 50)) return;
-      const p = worldToScreen(car.x, car.y, cam);
-      const scale = cam.scale;
-      const length = (car.length || player.length) * scale;
-      const width = (car.width || player.width) * scale;
+    function loadCarSprite(src) {
+      const image = new Image();
+      const sprite = { image, ready: false };
+      image.onload = () => {
+        sprite.ready = true;
+      };
+      image.src = src;
+      return sprite;
+    }
 
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(carSpriteAngle(car));
-      ctx.fillStyle = "rgba(0, 0, 0, 0.26)";
-      ctx.fillRect(-length / 2 + 2 * scale, -width / 2 + 3 * scale, length, width);
+    function carSpriteSize(car, scale, isPlayer) {
+      const baseLength = car.length || player.length;
+      const baseWidth = car.width || player.width;
+      const lengthBoost = isPlayer ? 1.16 : (car.isPolice ? 1.14 : 1.12);
+      const widthBoost = isPlayer ? 1.18 : (car.isPolice ? 1.2 : 1.16);
+      return {
+        length: baseLength * lengthBoost * scale,
+        width: baseWidth * widthBoost * scale
+      };
+    }
 
+    function drawFallbackCarShape(car, scale, isPlayer, length, width) {
       ctx.fillStyle = isPlayer ? "#f1c343" : car.color;
       ctx.beginPath();
       ctx.moveTo(length / 2, 0);
@@ -2576,17 +2608,70 @@
       ctx.fillRect(length / 2 - 2 * scale, -width * 0.34, 2 * scale, 3 * scale);
       ctx.fillRect(length / 2 - 2 * scale, width * 0.16, 2 * scale, 3 * scale);
 
-      if (isPlayer) {
-        ctx.fillStyle = "#d33a32";
-        ctx.fillRect(length / 2 - 1.5 * scale, -width * 0.2, 1.5 * scale, width * 0.4);
-      }
-
-      if (car.isPolice) {
+      if (car.isPolice && car.chasing) {
         const blink = Math.floor(performance.now() / 160) % 2;
         ctx.fillStyle = blink ? "#e92828" : "#3a65ff";
         ctx.fillRect(-2 * scale, -width * 0.42, 4 * scale, width * 0.42);
         ctx.fillStyle = blink ? "#3a65ff" : "#e92828";
         ctx.fillRect(-2 * scale, 0, 4 * scale, width * 0.42);
+      }
+    }
+
+    function drawPoliceSirenFlash(length, width, scale) {
+      const t = performance.now();
+      const swap = Math.floor(t / 140) % 2;
+      const pulse = 0.56 + Math.sin(t / 45) * 0.18;
+      const barW = width * 0.48;
+      const barH = Math.max(2.4 * scale, length * 0.056);
+      const barY = -length * 0.018;
+      const gap = Math.max(0.8 * scale, width * 0.015);
+      const halfW = (barW - gap) / 2;
+      const colors = swap ? ["#2f6cff", "#ff2626"] : ["#ff2626", "#2f6cff"];
+
+      ctx.save();
+      ctx.globalAlpha = 0.34 + pulse * 0.22;
+      ctx.fillStyle = colors[0];
+      ctx.beginPath();
+      ctx.ellipse(-barW * 0.24, barY, width * 0.34, barH * 1.9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = colors[1];
+      ctx.beginPath();
+      ctx.ellipse(barW * 0.24, barY, width * 0.34, barH * 1.9, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = colors[0];
+      ctx.fillRect(-barW / 2, barY - barH / 2, halfW, barH);
+      ctx.fillStyle = colors[1];
+      ctx.fillRect(-barW / 2 + halfW + gap, barY - barH / 2, halfW, barH);
+      ctx.fillStyle = "rgba(255,255,255,0.82)";
+      ctx.fillRect(-barW / 2 + 1 * scale, barY - barH * 0.18, barW - 2 * scale, Math.max(1, barH * 0.22));
+      ctx.restore();
+    }
+
+    function drawCar(car, cam, isPlayer = false) {
+      if (!rectVisible(car.x - 35, car.y - 35, 70, 70, cam, 50)) return;
+      const p = worldToScreen(car.x, car.y, cam);
+      const scale = cam.scale;
+      const { length, width } = carSpriteSize(car, scale, isPlayer);
+      const sprite = isPlayer ? carSpriteAssets.taxi : carSpriteAssets[car.spriteAsset || "car1"];
+
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.fillStyle = "rgba(0, 0, 0, 0.26)";
+      ctx.rotate(carSpriteAngle(car) + Math.PI / 2);
+      ctx.beginPath();
+      ctx.ellipse(2 * scale, 3 * scale, width * 0.5, length * 0.48, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (sprite?.ready || (sprite?.image.complete && sprite.image.naturalWidth > 0)) {
+        ctx.filter = isPlayer || car.isPolice ? "none" : (car.spriteFilter || "none");
+        ctx.drawImage(sprite.image, -width / 2, -length / 2, width, length);
+        ctx.filter = "none";
+        if (car.isPolice && car.chasing) drawPoliceSirenFlash(length, width, scale);
+      } else {
+        ctx.rotate(-Math.PI / 2);
+        drawFallbackCarShape(car, scale, isPlayer, length, width);
       }
 
       ctx.restore();

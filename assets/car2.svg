@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="295" height="576" viewBox="37 33 295 576">
+  <defs>
+    <filter id="softShadow" x="-30%" y="-10%" width="160%" height="125%">
+      <feDropShadow dx="8" dy="8" stdDeviation="8" flood-color="#2b332f" flood-opacity="0.28"/>
+    </filter>
+    <linearGradient id="bodyGrad" x1="70" y1="40" x2="298" y2="590" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#b9c4b1"/>
+      <stop offset="0.52" stop-color="#aeb9a8"/>
+      <stop offset="1" stop-color="#c2cbbd"/>
+    </linearGradient>
+    <linearGradient id="centerGlow" x1="97" y1="62" x2="263" y2="570" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d9e1d1" stop-opacity="0.45"/>
+      <stop offset="0.45" stop-color="#e1e7da" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#f3f5ef" stop-opacity="0.25"/>
+    </linearGradient>
+    <linearGradient id="leftShade" x1="53" y1="75" x2="123" y2="566" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#748171"/>
+      <stop offset="0.45" stop-color="#91a08c"/>
+      <stop offset="1" stop-color="#677361"/>
+    </linearGradient>
+    <linearGradient id="rightShade" x1="315" y1="75" x2="245" y2="566" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#778372"/>
+      <stop offset="0.55" stop-color="#8c9a86"/>
+      <stop offset="1" stop-color="#65725f"/>
+    </linearGradient>
+    <linearGradient id="glassDark" x1="100" y1="160" x2="267" y2="518" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#232626"/>
+      <stop offset="0.45" stop-color="#121414"/>
+      <stop offset="1" stop-color="#171818"/>
+    </linearGradient>
+    <linearGradient id="glassLeft" x1="74" y1="180" x2="190" y2="521" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#555958" stop-opacity="0.95"/>
+      <stop offset="0.4" stop-color="#3e4141" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#333636" stop-opacity="0.84"/>
+    </linearGradient>
+    <linearGradient id="hoodHighlight" x1="139" y1="250" x2="221" y2="453" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d7dfcf" stop-opacity="0.35"/>
+      <stop offset="0.6" stop-color="#e6ecdf" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#f9fbf6" stop-opacity="0.12"/>
+    </linearGradient>
+    <clipPath id="bodyClip">
+      <path d="M184 34C135 34 94 48 70 72C58 84 55 110 55 153L55 464C55 551 68 590 99 601C122 609 246 609 269 601C300 590 313 550 313 464L313 153C313 110 310 84 298 72C274 48 233 34 184 34Z"/>
+    </clipPath>
+    <path id="outerBody" d="M184 34C135 34 94 48 70 72C58 84 55 110 55 153L55 464C55 551 68 590 99 601C122 609 246 609 269 601C300 590 313 550 313 464L313 153C313 110 310 84 298 72C274 48 233 34 184 34Z"/>
+  </defs>
+
+  <ellipse cx="193" cy="590" rx="112" ry="13" fill="#243029" opacity="0.15" filter="url(#softShadow)"/>
+
+  <g filter="url(#softShadow)">
+    <use href="#outerBody" fill="url(#bodyGrad)" stroke="#697564" stroke-width="9" stroke-linejoin="round"/>
+
+    <g clip-path="url(#bodyClip)">
+      <!-- shaded side volume -->
+      <path d="M58 82C70 60 104 47 145 40L121 167L97 246L102 343L84 479L87 574C69 552 62 512 60 462L60 150C60 119 60 96 58 82Z" fill="url(#leftShade)" opacity="0.62"/>
+      <path d="M310 82C298 60 264 47 223 40L247 167L271 246L266 343L284 479L281 574C299 552 306 512 308 462L308 150C308 119 308 96 310 82Z" fill="url(#rightShade)" opacity="0.55"/>
+      <path d="M119 41C135 36 160 34 184 34C208 34 233 36 249 41C246 90 238 137 229 168C205 165 164 165 139 168C130 137 122 90 119 41Z" fill="url(#centerGlow)" opacity="0.55"/>
+      <path d="M118 268C134 261 234 261 250 268C256 304 256 416 249 455L111 455C104 416 104 304 118 268Z" fill="#bac5b3"/>
+      <path d="M184 263C207 263 235 265 250 268C255 307 255 416 249 455L158 455C157 392 162 321 184 263Z" fill="url(#hoodHighlight)" opacity="0.72"/>
+      <path d="M55 459C77 450 90 438 99 426L103 516C96 530 96 558 99 584C76 574 61 541 58 483Z" fill="#748170" opacity="0.45"/>
+      <path d="M313 459C291 450 278 438 269 426L265 516C272 530 272 558 269 584C292 574 307 541 310 483Z" fill="#748170" opacity="0.45"/>
+
+      <!-- top roof ridges -->
+      <path d="M147 48C143 83 139 123 133 165" fill="none" stroke="#7f8b79" stroke-width="6" opacity="0.65"/>
+      <path d="M221 48C225 83 229 123 235 165" fill="none" stroke="#7f8b79" stroke-width="6" opacity="0.65"/>
+      <path d="M184 43C183 86 181 125 177 163" fill="none" stroke="#eef3e9" stroke-width="3" opacity="0.18"/>
+
+      <!-- side sculpt lines -->
+      <path d="M84 196C95 227 102 251 108 282C101 313 96 346 96 382C97 413 102 444 109 476" fill="none" stroke="#6f7b6b" stroke-width="7" opacity="0.72"/>
+      <path d="M284 196C273 227 266 251 260 282C267 313 272 346 272 382C271 413 266 444 259 476" fill="none" stroke="#6f7b6b" stroke-width="7" opacity="0.72"/>
+      <path d="M55 344C74 350 86 354 102 359" fill="none" stroke="#788272" stroke-width="2" opacity="0.95"/>
+      <path d="M313 344C294 350 282 354 266 359" fill="none" stroke="#788272" stroke-width="2" opacity="0.95"/>
+      <path d="M55 459C75 454 88 448 103 439" fill="none" stroke="#788272" stroke-width="2" opacity="0.82"/>
+      <path d="M313 459C293 454 280 448 265 439" fill="none" stroke="#788272" stroke-width="2" opacity="0.82"/>
+    </g>
+
+    <!-- black glass areas -->
+    <path d="M82 184C105 173 141 166 184 165C227 166 263 173 286 184L270 266C249 260 220 257 184 257C148 257 119 260 98 266Z" fill="url(#glassDark)"/>
+    <path d="M82 184C105 173 141 166 184 165C173 190 162 225 158 260C135 260 115 262 98 266Z" fill="url(#glassLeft)" opacity="0.92"/>
+    <path d="M183 165C202 165 229 168 249 172C231 187 209 219 196 259C191 258 187 258 184 258C176 258 167 258 158 260C162 225 172 190 183 165Z" fill="#090a0a" opacity="0.32"/>
+
+    <!-- side windows -->
+    <path d="M75 260C75 247 80 234 92 221L103 284L97 348C90 349 84 348 77 347C75 323 74 288 75 260Z" fill="#111313"/>
+    <path d="M293 260C293 247 288 234 276 221L265 284L271 348C278 349 284 348 291 347C293 323 294 288 293 260Z" fill="#111313"/>
+    <path d="M75 363C82 359 91 360 99 362L99 436C93 445 84 450 75 453C74 428 74 389 75 363Z" fill="#121414"/>
+    <path d="M293 363C286 359 277 360 269 362L269 436C275 445 284 450 293 453C294 428 294 389 293 363Z" fill="#121414"/>
+
+    <!-- center roof/bonnet surface, drawn after glass edge for crisp separation -->
+    <path d="M118 278C135 266 233 266 250 278C254 309 254 417 249 454L111 454C106 417 106 309 118 278Z" fill="#bac5b3"/>
+    <path d="M184 266C207 266 236 270 250 278C254 310 254 417 249 454L159 454C157 393 163 318 184 266Z" fill="url(#hoodHighlight)"/>
+
+    <!-- rear window -->
+    <path d="M110 456C126 454 242 454 258 456C265 475 266 502 260 514C243 522 125 522 108 514C102 502 103 475 110 456Z" fill="url(#glassDark)"/>
+    <path d="M110 456C121 455 157 454 184 454C179 476 174 499 171 520C143 520 118 518 108 514C102 502 103 475 110 456Z" fill="url(#glassLeft)" opacity="0.85"/>
+
+    <!-- mirrors -->
+    <path d="M73 207C58 210 44 216 37 224L38 235C52 231 65 225 76 219C78 214 77 209 73 207Z" fill="#b6c0b0" stroke="#9ba695" stroke-width="1"/>
+    <path d="M295 207C310 210 324 216 331 224L330 235C316 231 303 225 292 219C290 214 291 209 295 207Z" fill="#b6c0b0" stroke="#9ba695" stroke-width="1"/>
+
+    <!-- top white highlights and amber turn markers -->
+    <path d="M82 81C91 66 116 56 137 53C128 62 124 70 125 79C110 82 100 88 96 103C91 105 87 104 81 100C80 91 80 86 82 81Z" fill="#f9fbf7" opacity="0.92"/>
+    <path d="M286 81C277 66 252 56 231 53C240 62 244 70 243 79C258 82 268 88 272 103C277 105 281 104 287 100C288 91 288 86 286 81Z" fill="#f9fbf7" opacity="0.92"/>
+    <path d="M82 95L96 101L96 122L82 116Z" fill="#ff8a19"/>
+    <path d="M286 95L272 101L272 122L286 116Z" fill="#ff8a19"/>
+
+    <!-- tail lamps -->
+    <path d="M88 549C92 571 109 584 136 585C130 575 122 566 111 562C101 558 98 547 98 543C94 540 90 542 88 549Z" fill="#ff3b29"/>
+    <path d="M280 549C276 571 259 584 232 585C238 575 246 566 257 562C267 558 270 547 270 543C274 540 278 542 280 549Z" fill="#ff3b29"/>
+
+    <!-- bottom body lip and outer outline refinement -->
+    <path d="M96 581C117 588 252 588 272 581" fill="none" stroke="#6a7563" stroke-width="7" opacity="0.72" stroke-linecap="round"/>
+    <use href="#outerBody" fill="none" stroke="#65705f" stroke-width="7" stroke-linejoin="round"/>
+    <use href="#outerBody" fill="none" stroke="#51604f" stroke-width="1.5" stroke-linejoin="round" opacity="0.55"/>
+  </g>
+</svg>

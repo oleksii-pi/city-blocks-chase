@@ -819,7 +819,7 @@
         this.motionX = vx;
         this.motionY = vy;
         if (Math.hypot(vx, vy) > CAR_PHYSICS.renderMinVectorSpeed) {
-          this.renderAngle = angleTo(vx, vy);
+          this.renderAngle = carMotionRenderAngle(this, vx, vy);
         }
       }
 
@@ -1466,7 +1466,7 @@
         player.motionX = (player.x - prevX) / dt;
         player.motionY = (player.y - prevY) / dt;
         if (Math.hypot(player.motionX, player.motionY) > CAR_PHYSICS.renderMinVectorSpeed) {
-          player.renderAngle = angleTo(player.motionX, player.motionY);
+          player.renderAngle = carMotionRenderAngle(player, player.motionX, player.motionY);
         }
       }
     }
@@ -1936,11 +1936,17 @@
       ctx.fill();
     }
 
+    function carMotionRenderAngle(car, vx, vy) {
+      const heading = car.angle ?? car.renderAngle ?? 0;
+      if (Math.hypot(vx, vy) <= CAR_PHYSICS.renderMinVectorSpeed) {
+        return car.renderAngle ?? heading;
+      }
+      const forwardDot = Math.cos(heading) * vx + Math.sin(heading) * vy;
+      return forwardDot < -CAR_PHYSICS.renderMinVectorSpeed ? heading : angleTo(vx, vy);
+    }
+
     function carSpriteAngle(car) {
-      const vx = car.motionX || 0;
-      const vy = car.motionY || 0;
-      if (Math.hypot(vx, vy) > CAR_PHYSICS.renderMinVectorSpeed) return angleTo(vx, vy);
-      return car.renderAngle ?? car.angle ?? 0;
+      return carMotionRenderAngle(car, car.motionX || 0, car.motionY || 0);
     }
 
     function drawCar(car, cam, isPlayer = false) {

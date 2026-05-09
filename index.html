@@ -396,6 +396,7 @@
     const GAME_OVER_FADE_SECONDS = 1.4;
     const GAME_OVER_SECONDS = GAME_OVER_SPLASH_SECONDS + GAME_OVER_FADE_SECONDS;
     const POLICE_FRONT_HIT_DOT = 0.55;
+    const POLICE_CHASE_LANES = [0, -LANE_WIDTH];
     const DEBUG_RECORDER_MIN_SIZE = 8;
     const DEBUG_RECORDER_STATUS_MS = 1600;
     const DEBUG_RECORDER_COLUMNS = [
@@ -1079,6 +1080,53 @@
         return true;
       }
 
+      chaseLaneScore(allCars, player, lateral) {
+        const playerVx = player.motionX || Math.cos(player.angle) * (player.speed || 0);
+        const playerVy = player.motionY || Math.sin(player.angle) * (player.speed || 0);
+        const distanceToPlayer = Math.hypot(player.x - this.x, player.y - this.y);
+        const leadSeconds = clamp(distanceToPlayer / Math.max(1, this.chaseSpeed), 0, 1.25);
+        const targetX = player.x + playerVx * leadSeconds * 0.35;
+        const targetY = player.y + playerVy * leadSeconds * 0.35;
+        let routeScore = Infinity;
+        let trafficPenalty = 0;
+
+        for (const lookAhead of [0.04, 0.11, 0.2, 0.32, 0.48, 0.64]) {
+          const t = Math.min(0.96, this.progress + lookAhead);
+          const pose = curvedLanePose(this.fromIX, this.fromIY, this.toIX, this.toIY, t, lateral, this.lastDx, this.lastDy);
+          if (rectHitsBuilding(pose.x, pose.y, this.length, this.width, pose.angle)) return Infinity;
+
+          const futureDistance = Math.hypot(targetX - pose.x, targetY - pose.y);
+          routeScore = Math.min(routeScore, futureDistance + lookAhead * CELL * 0.15);
+
+          for (const other of allCars) {
+            if (other === this) continue;
+            const clearance = other.isPolice && other.chasing ? 30 : 42;
+            const d = Math.hypot(other.x - pose.x, other.y - pose.y);
+            if (d < clearance) trafficPenalty += (clearance - d) * (lookAhead < 0.16 ? 2.6 : 1.1);
+          }
+        }
+
+        const laneChangePenalty = Math.abs(lateral - this.lateralOffset) * 0.22;
+        return routeScore + trafficPenalty + laneChangePenalty;
+      }
+
+      pickChaseLateral(allCars, player) {
+        if (this.progress > 0.82) return 0;
+
+        let bestLateral = 0;
+        let bestScore = Infinity;
+
+        for (const lateral of POLICE_CHASE_LANES) {
+          const score = this.chaseLaneScore(allCars, player, lateral);
+          if (score < bestScore) {
+            bestScore = score;
+            bestLateral = lateral;
+          }
+        }
+
+        return bestLateral;
+      }
+
       policeNeedsRightOfWay(allCars) {
         if (this.isPolice) return false;
         for (const police of allCars) {
@@ -1299,16 +1347,18 @@
 
         const activeUrgentPass = this.overtakeTimer > 0 && this.overtakeUrgent;
         const mergeProgress = activeUrgentPass ? 0.82 : (chasingPolice ? 0.74 : 0.62);
-        const mustMergeBack = this.progress > mergeProgress
-          || (this.overtakeTimer > 0 && !this.overtakeIsSafe(allCars, player, -LANE_WIDTH, activeUrgentPass || chasingPolice, chasingPolice));
+        const mustMergeBack = !chasingPolice && (
+          this.progress > mergeProgress
+          || (this.overtakeTimer > 0 && !this.overtakeIsSafe(allCars, player, -LANE_WIDTH, activeUrgentPass || chasingPolice, chasingPolice))
+        );
         if (mustMergeBack) {
           this.overtakeTimer = 0;
           this.overtakeUrgent = false;
         }
         if (this.progress > 0.74) this.emergencyTimer = 0;
-        this.targetLateral = this.overtakeTimer > 0 || this.emergencyTimer > 0
-          ? -LANE_WIDTH
-          : (this.rightOfWayTimer > 0 ? 10 : 0);
+        this.targetLateral = chasingPolice
+          ? this.pickChaseLateral(allCars, player)
+          : (this.overtakeTimer > 0 || this.emergencyTimer > 0 ? -LANE_WIDTH : (this.rightOfWayTimer > 0 ? 10 : 0));
         const lateralStep = 82 * dt;
         const prevProgress = this.progress;
         const prevLateral = this.lateralOffset;
@@ -1362,7 +1412,7 @@
 
         if (this.chasing && this.isPolice) {
           const goal = nearestIntersection(player.x, player.y);
-          chosen = this.pickChaseDirection(goal.ix, goal.iy);
+          chosen = this.pickChaseDirection(goal.ix, goal.iy, player);
         }
 
         const dirs = neighborDirs(this.fromIX, this.fromIY);
@@ -1391,7 +1441,7 @@
         this.toIY = this.fromIY + chosen[1];
       }
 
-      pickChaseDirection(goalIX, goalIY) {
+      pickChaseDirection(goalIX, goalIY, player) {
         const dirs = neighborDirs(this.fromIX, this.fromIY);
         let best = null;
         let bestScore = Infinity;
@@ -1399,10 +1449,12 @@
         for (const [dx, dy] of dirs) {
           const nx = this.fromIX + dx;
           const ny = this.fromIY + dy;
-          const distance = Math.abs(goalIX - nx) + Math.abs(goalIY - ny);
+          const routeDistance = Math.abs(goalIX - nx) + Math.abs(goalIY - ny);
+          const [ix, iy] = intersectionCenter(nx, ny);
+          const directDistance = Math.hypot(player.x - ix, player.y - iy) / CELL;
           const reversing = dx === -this.lastDx && dy === -this.lastDy;
-          const turnCost = dx === this.lastDx && dy === this.lastDy ? 0 : (reversing ? 1.15 : 0.35);
-          const score = distance + turnCost;
+          const turnCost = dx === this.lastDx && dy === this.lastDy ? 0 : (reversing ? 0.08 : 0.04);
+          const score = routeDistance * 10 + directDistance + turnCost;
           if (score < bestScore) {
             bestScore = score;
             best = [dx, dy];

@@ -220,6 +220,61 @@
       grid-row: 2;
     }
 
+    body.debug-selecting canvas,
+    body.debug-recording canvas {
+      filter: blur(1.1px) brightness(0.96);
+    }
+
+    .debug-recorder {
+      position: fixed;
+      inset: 0;
+      display: none;
+      z-index: 5;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    body.debug-selecting .debug-recorder,
+    body.debug-recording .debug-recorder,
+    body.debug-recorder-status .debug-recorder {
+      display: block;
+    }
+
+    body.debug-selecting .debug-recorder {
+      cursor: crosshair;
+      pointer-events: auto;
+    }
+
+    .debug-recorder-message {
+      position: absolute;
+      top: max(14px, env(safe-area-inset-top));
+      left: 50%;
+      min-width: 210px;
+      padding: 9px 14px;
+      border: 1px solid rgba(255, 244, 210, 0.28);
+      border-radius: 8px;
+      background: rgba(19, 22, 21, 0.86);
+      color: #fff6d7;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1;
+      text-align: center;
+      transform: translateX(-50%);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.26);
+      backdrop-filter: blur(5px);
+    }
+
+    .debug-recorder-selection {
+      position: absolute;
+      display: none;
+      min-width: 1px;
+      min-height: 1px;
+      border: 2px solid #fff6d7;
+      border-radius: 2px;
+      background: rgba(241, 195, 67, 0.14);
+      box-shadow: 0 0 0 9999px rgba(5, 7, 8, 0.12);
+    }
+
     @media (max-width: 640px) {
       .scoreboard {
         right: max(12px, env(safe-area-inset-right));
@@ -273,6 +328,11 @@
 
   <div id="message" class="message"></div>
 
+  <div id="debugRecorder" class="debug-recorder" aria-hidden="true">
+    <div id="debugRecorderMessage" class="debug-recorder-message"></div>
+    <div id="debugRecorderSelection" class="debug-recorder-selection"></div>
+  </div>
+
   <div class="controls" aria-label="Driving controls">
     <button class="control up" data-key="ArrowUp" aria-label="Accelerate">▲</button>
     <button class="control left" data-key="ArrowLeft" aria-label="Turn left">◀</button>
@@ -293,6 +353,9 @@
     const messageEl = document.getElementById("message");
     const minimapCanvas = document.getElementById("minimap");
     const minimapCtx = minimapCanvas.getContext("2d");
+    const debugRecorderEl = document.getElementById("debugRecorder");
+    const debugRecorderMessageEl = document.getElementById("debugRecorderMessage");
+    const debugRecorderSelectionEl = document.getElementById("debugRecorderSelection");
 
     const MINIMAP_SIZE = 200;
     const GRID = 16;
@@ -317,6 +380,35 @@
     const GAME_OVER_FADE_SECONDS = 1.4;
     const GAME_OVER_SECONDS = GAME_OVER_SPLASH_SECONDS + GAME_OVER_FADE_SECONDS;
     const POLICE_FRONT_HIT_DOT = 0.55;
+    const DEBUG_RECORDER_MIN_SIZE = 8;
+    const DEBUG_RECORDER_STATUS_MS = 1600;
+    const DEBUG_RECORDER_COLUMNS = [
+      "t",
+      "id",
+      "type",
+      "x",
+      "y",
+      "angle",
+      "renderAngle",
+      "speed",
+      "vx",
+      "vy",
+      "screenX",
+      "screenY",
+      "fromIX",
+      "fromIY",
+      "toIX",
+      "toIY",
+      "progress",
+      "lateral",
+      "pushX",
+      "pushY",
+      "pushVX",
+      "pushVY",
+      "chasing",
+      "blocked",
+      "hitStop"
+    ];
     const CAR_PHYSICS = {
       playerMaxSpeed: 200,
       playerReverseSpeed: -45,
@@ -336,6 +428,20 @@
       renderMaxReverseSlipAngle: 0.2
     };
     const keys = new Set();
+    const debugRecorder = {
+      mode: "idle",
+      selecting: false,
+      pointerId: null,
+      startX: 0,
+      startY: 0,
+      currentX: 0,
+      currentY: 0,
+      area: null,
+      startedAt: 0,
+      copiedAt: 0,
+      frames: 0,
+      rows: []
+    };
 
     const palette = {
       grass: "#738f58",
@@ -1700,6 +1806,245 @@
       };
     }
 
+    function formatDebugNumber(value, digits = 1) {
+      if (value === undefined || value === null || !Number.isFinite(value)) return ".";
+      return Number(value).toFixed(digits);
+    }
+
+    function normalizeDebugRect(x1, y1, x2, y2) {
+      let left = clamp(Math.min(x1, x2), 0, window.innerWidth);
+      let top = clamp(Math.min(y1, y2), 0, window.innerHeight);
+      let right = clamp(Math.max(x1, x2), 0, window.innerWidth);
+      let bottom = clamp(Math.max(y1, y2), 0, window.innerHeight);
+
+      if (right - left < DEBUG_RECORDER_MIN_SIZE) {
+        const cx = clamp((left + right) / 2, 0, window.innerWidth);
+        left = clamp(cx - DEBUG_RECORDER_MIN_SIZE / 2, 0, Math.max(0, window.innerWidth - DEBUG_RECORDER_MIN_SIZE));
+        right = left + DEBUG_RECORDER_MIN_SIZE;
+      }
+      if (bottom - top < DEBUG_RECORDER_MIN_SIZE) {
+        const cy = clamp((top + bottom) / 2, 0, window.innerHeight);
+        top = clamp(cy - DEBUG_RECORDER_MIN_SIZE / 2, 0, Math.max(0, window.innerHeight - DEBUG_RECORDER_MIN_SIZE));
+        bottom = top + DEBUG_RECORDER_MIN_SIZE;
+      }
+
+      return {
+        x: left,
+        y: top,
+        w: Math.max(DEBUG_RECORDER_MIN_SIZE, right - left),
+        h: Math.max(DEBUG_RECORDER_MIN_SIZE, bottom - top)
+      };
+    }
+
+    function setDebugSelectionBox(rect) {
+      debugRecorderSelectionEl.style.display = rect ? "block" : "none";
+      if (!rect) return;
+      debugRecorderSelectionEl.style.left = rect.x + "px";
+      debugRecorderSelectionEl.style.top = rect.y + "px";
+      debugRecorderSelectionEl.style.width = rect.w + "px";
+      debugRecorderSelectionEl.style.height = rect.h + "px";
+    }
+
+    function updateDebugClasses() {
+      document.body.classList.toggle("debug-selecting", debugRecorder.mode === "selecting");
+      document.body.classList.toggle("debug-recording", debugRecorder.mode === "recording");
+      document.body.classList.toggle("debug-recorder-status", debugRecorder.mode === "status");
+    }
+
+    function startDebugSelection() {
+      debugRecorder.mode = "selecting";
+      debugRecorder.selecting = false;
+      debugRecorder.pointerId = null;
+      debugRecorder.area = null;
+      debugRecorder.startedAt = 0;
+      debugRecorder.copiedAt = 0;
+      debugRecorder.frames = 0;
+      debugRecorder.rows.length = 0;
+      debugRecorderMessageEl.textContent = "Select interesting area.";
+      setDebugSelectionBox(null);
+      updateDebugClasses();
+    }
+
+    function startDebugRecording(area) {
+      debugRecorder.mode = "recording";
+      debugRecorder.selecting = false;
+      debugRecorder.pointerId = null;
+      debugRecorder.area = area;
+      debugRecorder.startedAt = performance.now();
+      debugRecorder.frames = 0;
+      debugRecorder.rows.length = 0;
+      debugRecorderMessageEl.textContent = "Recording car movement. Press Enter to copy.";
+      setDebugSelectionBox(area);
+      updateDebugClasses();
+    }
+
+    function showDebugStatus(text) {
+      debugRecorder.mode = "status";
+      debugRecorder.copiedAt = performance.now();
+      debugRecorderMessageEl.textContent = text;
+      setDebugSelectionBox(null);
+      updateDebugClasses();
+    }
+
+    function updateDebugStatus(now) {
+      if (debugRecorder.mode !== "status") return;
+      if (now - debugRecorder.copiedAt < DEBUG_RECORDER_STATUS_MS) return;
+      debugRecorder.mode = "idle";
+      updateDebugClasses();
+    }
+
+    function cancelDebugRecording() {
+      if (debugRecorder.pointerId !== null && debugRecorderEl.hasPointerCapture(debugRecorder.pointerId)) {
+        debugRecorderEl.releasePointerCapture(debugRecorder.pointerId);
+      }
+      debugRecorder.mode = "idle";
+      debugRecorder.selecting = false;
+      debugRecorder.pointerId = null;
+      debugRecorder.area = null;
+      debugRecorder.startedAt = 0;
+      debugRecorder.copiedAt = 0;
+      debugRecorder.frames = 0;
+      debugRecorder.rows.length = 0;
+      debugRecorderMessageEl.textContent = "";
+      setDebugSelectionBox(null);
+      updateDebugClasses();
+    }
+
+    function debugPointerPoint(event) {
+      return {
+        x: clamp(event.clientX, 0, window.innerWidth),
+        y: clamp(event.clientY, 0, window.innerHeight)
+      };
+    }
+
+    function carIntersectsDebugArea(car, cam) {
+      if (!debugRecorder.area) return null;
+      const p = worldToScreen(car.x, car.y, cam);
+      const radius = (car.radius || 16) * cam.scale;
+      const area = debugRecorder.area;
+      if (p.x + radius < area.x || p.x - radius > area.x + area.w) return null;
+      if (p.y + radius < area.y || p.y - radius > area.y + area.h) return null;
+      return p;
+    }
+
+    function debugCarType(car, isPlayer) {
+      if (isPlayer) return "player";
+      return car.isPolice ? "police" : "traffic";
+    }
+
+    function debugCarRow(car, isPlayer, screenPoint, timeMs) {
+      return [
+        String(timeMs),
+        isPlayer ? "p" : String(car.id),
+        debugCarType(car, isPlayer),
+        formatDebugNumber(car.x),
+        formatDebugNumber(car.y),
+        formatDebugNumber(car.angle, 3),
+        formatDebugNumber(carSpriteAngle(car), 3),
+        formatDebugNumber(car.speed || 0),
+        formatDebugNumber(car.motionX || 0),
+        formatDebugNumber(car.motionY || 0),
+        formatDebugNumber(screenPoint.x),
+        formatDebugNumber(screenPoint.y),
+        isPlayer ? "." : car.fromIX,
+        isPlayer ? "." : car.fromIY,
+        isPlayer ? "." : car.toIX,
+        isPlayer ? "." : car.toIY,
+        isPlayer ? "." : formatDebugNumber(car.progress, 4),
+        isPlayer ? "." : formatDebugNumber(car.lateralOffset || 0),
+        isPlayer ? "." : formatDebugNumber(car.pushX || 0),
+        isPlayer ? "." : formatDebugNumber(car.pushY || 0),
+        isPlayer ? "." : formatDebugNumber(car.pushVX || 0),
+        isPlayer ? "." : formatDebugNumber(car.pushVY || 0),
+        isPlayer ? "." : (car.chasing ? 1 : 0),
+        isPlayer ? "." : formatDebugNumber(car.blockedTime || 0, 2),
+        isPlayer ? "." : formatDebugNumber(car.hitStopTimer || 0, 2)
+      ].join("\t");
+    }
+
+    function recordDebugFrame(cam, now) {
+      if (debugRecorder.mode !== "recording" || !debugRecorder.area) return;
+      const timeMs = Math.max(0, Math.round(now - debugRecorder.startedAt));
+      let visibleCars = 0;
+
+      const playerPoint = carIntersectsDebugArea(player, cam);
+      if (playerPoint) {
+        debugRecorder.rows.push(debugCarRow(player, true, playerPoint, timeMs));
+        visibleCars++;
+      }
+
+      for (const car of cars) {
+        const screenPoint = carIntersectsDebugArea(car, cam);
+        if (!screenPoint) continue;
+        debugRecorder.rows.push(debugCarRow(car, false, screenPoint, timeMs));
+        visibleCars++;
+      }
+
+      debugRecorder.frames++;
+      debugRecorderMessageEl.textContent = "Recording " + (timeMs / 1000).toFixed(1) + "s  Cars " + visibleCars + "  Press Enter to copy.";
+    }
+
+    function buildDebugRecordingText() {
+      const area = debugRecorder.area || { x: 0, y: 0, w: 0, h: 0 };
+      return [
+        "# tunnel-car-recording-v1",
+        "# selection_screen_px\t" + [
+          formatDebugNumber(area.x),
+          formatDebugNumber(area.y),
+          formatDebugNumber(area.w),
+          formatDebugNumber(area.h)
+        ].join("\t"),
+        "# frames\t" + debugRecorder.frames,
+        DEBUG_RECORDER_COLUMNS.join("\t"),
+        ...debugRecorder.rows
+      ].join("\n");
+    }
+
+    function fallbackCopyText(text) {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.setAttribute("readonly", "");
+      textArea.style.position = "fixed";
+      textArea.style.left = "-9999px";
+      textArea.style.top = "0";
+      document.body.appendChild(textArea);
+      textArea.select();
+      let copied = false;
+      try {
+        copied = document.execCommand("copy");
+      } finally {
+        textArea.remove();
+      }
+      return copied;
+    }
+
+    async function copyDebugRecording() {
+      if (debugRecorder.mode !== "recording") return;
+      const text = buildDebugRecordingText();
+      const rowCount = debugRecorder.rows.length;
+      debugRecorder.mode = "status";
+      debugRecorder.copiedAt = performance.now();
+      debugRecorderMessageEl.textContent = "Copying recording...";
+      updateDebugClasses();
+      let copied = false;
+
+      if (navigator.clipboard && window.isSecureContext) {
+        try {
+          await navigator.clipboard.writeText(text);
+          copied = true;
+        } catch (error) {
+          copied = false;
+        }
+      }
+
+      if (!copied) copied = fallbackCopyText(text);
+      if (!copied) console.log(text);
+
+      debugRecorder.rows.length = 0;
+      debugRecorder.area = null;
+      showDebugStatus(copied ? "Recorded " + rowCount + " rows copied." : "Clipboard blocked. Recording logged to console.");
+    }
+
     function drawWorldRect(x, y, w, h, cam, color) {
       const p = worldToScreen(x, y, cam);
       ctx.fillStyle = color;
@@ -2152,13 +2497,30 @@
       update(dt);
       const cam = createCamera();
       draw(cam);
+      recordDebugFrame(cam, now);
       updateHud();
       drawMinimap();
+      updateDebugStatus(now);
       requestAnimationFrame(frame);
     }
 
     window.addEventListener("resize", resize);
     window.addEventListener("keydown", event => {
+      if (event.key.toLowerCase() === "d" && event.shiftKey) {
+        event.preventDefault();
+        startDebugSelection();
+        return;
+      }
+      if (event.key === "Enter" && debugRecorder.mode === "recording") {
+        event.preventDefault();
+        copyDebugRecording();
+        return;
+      }
+      if (event.key === "Escape" && debugRecorder.mode !== "idle") {
+        event.preventDefault();
+        cancelDebugRecording();
+        return;
+      }
       if (event.key.startsWith("Arrow")) {
         event.preventDefault();
         keys.add(event.key);
@@ -2185,6 +2547,46 @@
       button.addEventListener("pointercancel", release);
       button.addEventListener("pointerleave", release);
     }
+
+    debugRecorderEl.addEventListener("pointerdown", event => {
+      if (debugRecorder.mode !== "selecting") return;
+      event.preventDefault();
+      const point = debugPointerPoint(event);
+      debugRecorder.selecting = true;
+      debugRecorder.pointerId = event.pointerId;
+      debugRecorder.startX = point.x;
+      debugRecorder.startY = point.y;
+      debugRecorder.currentX = point.x;
+      debugRecorder.currentY = point.y;
+      debugRecorderEl.setPointerCapture(event.pointerId);
+      setDebugSelectionBox(normalizeDebugRect(point.x, point.y, point.x, point.y));
+    });
+
+    debugRecorderEl.addEventListener("pointermove", event => {
+      if (debugRecorder.mode !== "selecting" || !debugRecorder.selecting || event.pointerId !== debugRecorder.pointerId) return;
+      event.preventDefault();
+      const point = debugPointerPoint(event);
+      debugRecorder.currentX = point.x;
+      debugRecorder.currentY = point.y;
+      setDebugSelectionBox(normalizeDebugRect(debugRecorder.startX, debugRecorder.startY, point.x, point.y));
+    });
+
+    debugRecorderEl.addEventListener("pointerup", event => {
+      if (debugRecorder.mode !== "selecting" || !debugRecorder.selecting || event.pointerId !== debugRecorder.pointerId) return;
+      event.preventDefault();
+      const point = debugPointerPoint(event);
+      const area = normalizeDebugRect(debugRecorder.startX, debugRecorder.startY, point.x, point.y);
+      if (debugRecorderEl.hasPointerCapture(event.pointerId)) debugRecorderEl.releasePointerCapture(event.pointerId);
+      startDebugRecording(area);
+    });
+
+    debugRecorderEl.addEventListener("pointercancel", event => {
+      if (debugRecorder.mode !== "selecting" || event.pointerId !== debugRecorder.pointerId) return;
+      event.preventDefault();
+      debugRecorder.selecting = false;
+      debugRecorder.pointerId = null;
+      setDebugSelectionBox(null);
+    });
 
     createBlocks();
     createPedestrians();

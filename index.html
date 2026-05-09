@@ -1772,11 +1772,12 @@
         }
         car.refreshPosition();
         player.speed *= impactSpeed > 90 ? -0.12 : 0.38;
-        if (!car.isPolice || !car.chasing) {
-          const recoverySeconds = dotV > 12 ? Math.min(HIT_STOP_SECONDS, 0.25 + dotV / 140) : 0;
-          if (recoverySeconds > 0) {
-            car.hitStopTimer = Math.max(car.hitStopTimer, recoverySeconds);
-            car.yieldTimer = Math.max(car.yieldTimer, recoverySeconds);
+        if (!car.isPolice || !car.chasing || (!policeCapturedPlayer && !policeFrontCrash && dotV > 12)) {
+          const hitStopSeconds = dotV > 12 ? HIT_STOP_SECONDS : 0;
+          if (hitStopSeconds > 0) {
+            car.hitStopTimer = Math.max(car.hitStopTimer, hitStopSeconds);
+            car.yieldTimer = Math.max(car.yieldTimer, hitStopSeconds);
+            car.speed = 0;
             car.blockedTime = 0;
             car.stuckTime = 0;
           } else {

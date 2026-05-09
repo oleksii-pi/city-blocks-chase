@@ -220,11 +220,6 @@
       grid-row: 2;
     }
 
-    body.debug-selecting canvas,
-    body.debug-recording canvas {
-      filter: blur(1.1px) brightness(0.96);
-    }
-
     .debug-recorder {
       position: fixed;
       inset: 0;
@@ -245,6 +240,15 @@
       pointer-events: auto;
     }
 
+    .debug-recorder-shade {
+      position: absolute;
+      display: none;
+      background: rgba(5, 7, 8, 0.1);
+      backdrop-filter: blur(1.4px) brightness(0.96);
+      -webkit-backdrop-filter: blur(1.4px) brightness(0.96);
+      pointer-events: none;
+    }
+
     .debug-recorder-message {
       position: absolute;
       top: max(14px, env(safe-area-inset-top));
@@ -262,6 +266,7 @@
       transform: translateX(-50%);
       box-shadow: 0 12px 28px rgba(0, 0, 0, 0.26);
       backdrop-filter: blur(5px);
+      z-index: 2;
     }
 
     .debug-recorder-selection {
@@ -272,7 +277,8 @@
       border: 2px solid #fff6d7;
       border-radius: 2px;
       background: rgba(241, 195, 67, 0.14);
-      box-shadow: 0 0 0 9999px rgba(5, 7, 8, 0.12);
+      box-shadow: 0 0 0 1px rgba(5, 7, 8, 0.32);
+      z-index: 1;
     }
 
     @media (max-width: 640px) {
@@ -329,6 +335,10 @@
   <div id="message" class="message"></div>
 
   <div id="debugRecorder" class="debug-recorder" aria-hidden="true">
+    <div class="debug-recorder-shade" data-debug-shade="top"></div>
+    <div class="debug-recorder-shade" data-debug-shade="right"></div>
+    <div class="debug-recorder-shade" data-debug-shade="bottom"></div>
+    <div class="debug-recorder-shade" data-debug-shade="left"></div>
     <div id="debugRecorderMessage" class="debug-recorder-message"></div>
     <div id="debugRecorderSelection" class="debug-recorder-selection"></div>
   </div>
@@ -356,6 +366,12 @@
     const debugRecorderEl = document.getElementById("debugRecorder");
     const debugRecorderMessageEl = document.getElementById("debugRecorderMessage");
     const debugRecorderSelectionEl = document.getElementById("debugRecorderSelection");
+    const debugRecorderShadeEls = {
+      top: debugRecorderEl.querySelector('[data-debug-shade="top"]'),
+      right: debugRecorderEl.querySelector('[data-debug-shade="right"]'),
+      bottom: debugRecorderEl.querySelector('[data-debug-shade="bottom"]'),
+      left: debugRecorderEl.querySelector('[data-debug-shade="left"]')
+    };
 
     const MINIMAP_SIZE = 200;
     const GRID = 16;
@@ -1836,13 +1852,69 @@
       };
     }
 
+    function setDebugShade(el, x, y, w, h) {
+      if (w <= 0 || h <= 0) {
+        el.style.display = "none";
+        return;
+      }
+
+      el.style.display = "block";
+      el.style.left = x + "px";
+      el.style.top = y + "px";
+      el.style.width = w + "px";
+      el.style.height = h + "px";
+    }
+
+    function setDebugSelectionShade(rect) {
+      const screenW = window.innerWidth;
+      const screenH = window.innerHeight;
+
+      if (debugRecorder.mode !== "selecting") {
+        for (const el of Object.values(debugRecorderShadeEls)) el.style.display = "none";
+        return;
+      }
+
+      if (!rect) {
+        setDebugShade(debugRecorderShadeEls.top, 0, 0, screenW, screenH);
+        setDebugShade(debugRecorderShadeEls.right, 0, 0, 0, 0);
+        setDebugShade(debugRecorderShadeEls.bottom, 0, 0, 0, 0);
+        setDebugShade(debugRecorderShadeEls.left, 0, 0, 0, 0);
+        return;
+      }
+
+      const left = clamp(rect.x, 0, screenW);
+      const top = clamp(rect.y, 0, screenH);
+      const right = clamp(rect.x + rect.w, 0, screenW);
+      const bottom = clamp(rect.y + rect.h, 0, screenH);
+
+      setDebugShade(debugRecorderShadeEls.top, 0, 0, screenW, top);
+      setDebugShade(debugRecorderShadeEls.right, right, top, screenW - right, bottom - top);
+      setDebugShade(debugRecorderShadeEls.bottom, 0, bottom, screenW, screenH - bottom);
+      setDebugShade(debugRecorderShadeEls.left, 0, top, left, bottom - top);
+    }
+
     function setDebugSelectionBox(rect) {
       debugRecorderSelectionEl.style.display = rect ? "block" : "none";
+      setDebugSelectionShade(rect);
       if (!rect) return;
       debugRecorderSelectionEl.style.left = rect.x + "px";
       debugRecorderSelectionEl.style.top = rect.y + "px";
       debugRecorderSelectionEl.style.width = rect.w + "px";
       debugRecorderSelectionEl.style.height = rect.h + "px";
+    }
+
+    function refreshDebugRecorderOverlay() {
+      if (debugRecorder.mode === "selecting" && debugRecorder.selecting) {
+        setDebugSelectionBox(normalizeDebugRect(
+          debugRecorder.startX,
+          debugRecorder.startY,
+          debugRecorder.currentX,
+          debugRecorder.currentY
+        ));
+        return;
+      }
+
+      setDebugSelectionBox(debugRecorder.area);
     }
 
     function updateDebugClasses() {
@@ -1873,7 +1945,7 @@
       debugRecorder.startedAt = performance.now();
       debugRecorder.frames = 0;
       debugRecorder.rows.length = 0;
-      debugRecorderMessageEl.textContent = "Recording car movement. Press Enter to copy.";
+      debugRecorderMessageEl.textContent = "Recording car movement. Press Space to copy.";
       setDebugSelectionBox(area);
       updateDebugClasses();
     }
@@ -1981,7 +2053,7 @@
       }
 
       debugRecorder.frames++;
-      debugRecorderMessageEl.textContent = "Recording " + (timeMs / 1000).toFixed(1) + "s  Cars " + visibleCars + "  Press Enter to copy.";
+      debugRecorderMessageEl.textContent = "Recording " + (timeMs / 1000).toFixed(1) + "s  Cars " + visibleCars + "  Press Space to copy.";
     }
 
     function buildDebugRecordingText() {
@@ -2494,7 +2566,7 @@
     function frame(now) {
       const dt = Math.min(0.05, (now - lastTime) / 1000 || 0);
       lastTime = now;
-      update(dt);
+      if (debugRecorder.mode !== "selecting") update(dt);
       const cam = createCamera();
       draw(cam);
       recordDebugFrame(cam, now);
@@ -2504,14 +2576,17 @@
       requestAnimationFrame(frame);
     }
 
-    window.addEventListener("resize", resize);
+    window.addEventListener("resize", () => {
+      resize();
+      refreshDebugRecorderOverlay();
+    });
     window.addEventListener("keydown", event => {
-      if (event.key.toLowerCase() === "d" && event.shiftKey) {
+      if (event.key.toLowerCase() === "d" && !event.metaKey && !event.ctrlKey && !event.altKey) {
         event.preventDefault();
-        startDebugSelection();
+        if (!event.repeat && debugRecorder.mode !== "recording") startDebugSelection();
         return;
       }
-      if (event.key === "Enter" && debugRecorder.mode === "recording") {
+      if ((event.code === "Space" || event.key === " ") && debugRecorder.mode === "recording") {
         event.preventDefault();
         copyDebugRecording();
         return;

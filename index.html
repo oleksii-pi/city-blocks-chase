@@ -546,6 +546,11 @@
     let gameOverFading = false;
     let minimapSize = MINIMAP_SIZE;
     let lastTime = performance.now();
+    const trafficIndex = createSpatialIndex(96);
+    const collisionIndex = createSpatialIndex(72);
+    let minimapBackground = null;
+    let minimapBackgroundSize = 0;
+    let minimapBackgroundRatio = 0;
 
     function getMinimapSize() {
       return window.matchMedia(PHONE_LAYOUT_QUERY).matches ? PHONE_MINIMAP_SIZE : MINIMAP_SIZE;
@@ -563,6 +568,7 @@
       minimapCanvas.width = Math.floor(minimapSize * ratio);
       minimapCanvas.height = Math.floor(minimapSize * ratio);
       minimapCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      invalidateMinimapBackground();
     }
 
     function rand(seed) {
@@ -580,6 +586,50 @@
 
     function clamp(v, min, max) {
       return Math.max(min, Math.min(max, v));
+    }
+
+    function createSpatialIndex(cellSize) {
+      return {
+        cellSize,
+        buckets: new Map(),
+        results: []
+      };
+    }
+
+    function spatialKey(ix, iy) {
+      return ix + "," + iy;
+    }
+
+    function rebuildSpatialIndex(index, items) {
+      index.buckets.clear();
+      for (const item of items) {
+        const ix = Math.floor(item.x / index.cellSize);
+        const iy = Math.floor(item.y / index.cellSize);
+        const key = spatialKey(ix, iy);
+        let bucket = index.buckets.get(key);
+        if (!bucket) {
+          bucket = [];
+          index.buckets.set(key, bucket);
+        }
+        bucket.push(item);
+      }
+    }
+
+    function nearbyCars(index, x, y, radius) {
+      const results = index.results;
+      results.length = 0;
+      const minIX = Math.floor((x - radius) / index.cellSize);
+      const maxIX = Math.floor((x + radius) / index.cellSize);
+      const minIY = Math.floor((y - radius) / index.cellSize);
+      const maxIY = Math.floor((y + radius) / index.cellSize);
+      for (let iy = minIY; iy <= maxIY; iy++) {
+        for (let ix = minIX; ix <= maxIX; ix++) {
+          const bucket = index.buckets.get(spatialKey(ix, iy));
+          if (!bucket) continue;
+          for (const car of bucket) results.push(car);
+        }
+      }
+      return results;
     }
 
     function approach(value, target, amount) {
@@ -731,6 +781,7 @@
           blocks.push({ gx, gy, police, houses });
         }
       }
+      invalidateMinimapBackground();
     }
 
     function blockAt(gx, gy) {
@@ -1086,7 +1137,7 @@
           const pose = curvedLanePose(this.fromIX, this.fromIY, this.toIX, this.toIY, step, lateral, this.lastDx, this.lastDy);
           const clearance = ahead > 0.18 ? 26 : 31;
 
-          for (const other of allCars) {
+          for (const other of nearbyCars(trafficIndex, pose.x, pose.y, clearance)) {
             if (other === this) continue;
             const d = Math.hypot(other.x - pose.x, other.y - pose.y);
             if (d > clearance) continue;
@@ -1114,7 +1165,7 @@
           const pose = curvedLanePose(this.fromIX, this.fromIY, this.toIX, this.toIY, t, passingLateral, this.lastDx, this.lastDy);
           if (rectHitsBuilding(pose.x, pose.y, this.length, this.width, this.angle)) return false;
           if (!ignorePlayer && Math.hypot(player.x - pose.x, player.y - pose.y) < 34) return false;
-          for (const other of allCars) {
+          for (const other of nearbyCars(trafficIndex, pose.x, pose.y, 34)) {
             if (other === this) continue;
             if (Math.hypot(other.x - pose.x, other.y - pose.y) < 34) return false;
           }
@@ -1141,7 +1192,7 @@
           const futureDistance = Math.hypot(targetX - pose.x, targetY - pose.y);
           routeScore = Math.min(routeScore, futureDistance + lookAhead * CELL * 0.15);
 
-          for (const other of allCars) {
+          for (const other of nearbyCars(trafficIndex, pose.x, pose.y, 42)) {
             if (other === this) continue;
             const clearance = other.isPolice && other.chasing ? 30 : 42;
             const d = Math.hypot(other.x - pose.x, other.y - pose.y);
@@ -1172,8 +1223,8 @@
 
       policeNeedsRightOfWay(allCars) {
         if (this.isPolice) return false;
-        for (const police of allCars) {
-          if (!police.isPolice || !police.chasing) continue;
+        for (const police of policeCars) {
+          if (!police.chasing) continue;
           if (police.sameSegment(this) && police.progress < this.progress && this.progress - police.progress < 0.44) {
             return true;
           }
@@ -1208,7 +1259,7 @@
               clear = false;
               break;
             }
-            for (const other of allCars) {
+            for (const other of nearbyCars(trafficIndex, x, y, 36)) {
               if (other === this) continue;
               if (Math.hypot(other.x - x, other.y - y) < 36) {
                 clear = false;
@@ -1243,7 +1294,7 @@
         if ((!force && (this.progress < 0.18 || this.progress > 0.78)) || (force && (this.progress < 0.08 || this.progress > 0.9))) return false;
 
         if (!force) {
-          for (const other of allCars) {
+          for (const other of nearbyCars(trafficIndex, this.x, this.y, CELL)) {
             if (other === this) continue;
             if (other.sameTrafficLane && other.sameTrafficLane(this) && other.progress < this.progress) return false;
           }
@@ -1260,7 +1311,7 @@
           const [x, y] = lanePosWithLateral(newFromIX, newFromIY, newToIX, newToIY, t, 0);
           if (rectHitsBuilding(x, y, this.length, this.width, this.angle)) return false;
           if (Math.hypot(player.x - x, player.y - y) < 36) return false;
-          for (const other of allCars) {
+          for (const other of nearbyCars(trafficIndex, x, y, force ? 27 : 32)) {
             if (other === this) continue;
             if (Math.hypot(other.x - x, other.y - y) < (force ? 27 : 32)) return false;
           }
@@ -1291,7 +1342,7 @@
           const pose = curvedLanePose(this.fromIX, this.fromIY, this.toIX, this.toIY, t, this.lateralOffset, this.lastDx, this.lastDy);
           if (rectHitsBuilding(pose.x, pose.y, this.length, this.width, this.angle)) return false;
           if (Math.hypot(player.x - pose.x, player.y - pose.y) < 35) return false;
-          for (const other of allCars) {
+          for (const other of nearbyCars(trafficIndex, pose.x, pose.y, 32)) {
             if (other === this) continue;
             if (Math.hypot(other.x - pose.x, other.y - pose.y) < 32) return false;
           }
@@ -1912,11 +1963,14 @@
 
     function resolveCollisions() {
       for (let pass = 0; pass < 3; pass++) {
+        rebuildSpatialIndex(collisionIndex, cars);
         for (let i = 0; i < cars.length; i++) {
           resolveCarPair(player, cars[i]);
-          for (let j = i + 1; j < cars.length; j++) {
-            if (Math.abs(cars[i].x - cars[j].x) > 36 || Math.abs(cars[i].y - cars[j].y) > 36) continue;
-            resolveCarPair(cars[i], cars[j]);
+          const car = cars[i];
+          for (const other of nearbyCars(collisionIndex, car.x, car.y, 36)) {
+            if (other === car || other.id <= car.id) continue;
+            if (Math.abs(car.x - other.x) > 36 || Math.abs(car.y - other.y) > 36) continue;
+            resolveCarPair(car, other);
           }
         }
       }
@@ -1937,6 +1991,7 @@
 
       survivalTime += dt;
       updatePlayer(dt);
+      rebuildSpatialIndex(trafficIndex, cars);
       for (const car of cars) car.update(dt, cars, player);
       updatePoliceChases();
       resolveCollisions();
@@ -2263,7 +2318,6 @@
       }
 
       if (!copied) copied = fallbackCopyText(text);
-      if (!copied) console.log(text);
 
       debugRecorder.rows.length = 0;
       debugRecorder.area = null;
@@ -2734,6 +2788,44 @@
       }
     }
 
+    function invalidateMinimapBackground() {
+      minimapBackground = null;
+      minimapBackgroundSize = 0;
+      minimapBackgroundRatio = 0;
+    }
+
+    function getMinimapBackground() {
+      const ratio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      if (minimapBackground && minimapBackgroundSize === minimapSize && minimapBackgroundRatio === ratio) {
+        return minimapBackground;
+      }
+
+      const bgCanvas = document.createElement("canvas");
+      bgCanvas.width = Math.floor(minimapSize * ratio);
+      bgCanvas.height = Math.floor(minimapSize * ratio);
+      const bgCtx = bgCanvas.getContext("2d");
+      bgCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+      const scale = minimapSize / WORLD;
+      bgCtx.fillStyle = "#20252a";
+      bgCtx.fillRect(0, 0, minimapSize, minimapSize);
+      bgCtx.fillStyle = "rgba(188, 168, 111, 0.25)";
+      bgCtx.strokeStyle = "rgba(255, 244, 210, 0.15)";
+      bgCtx.lineWidth = 1;
+      for (const block of blocks) {
+        const x = blockWorldX(block.gx) * scale;
+        const y = blockWorldY(block.gy) * scale;
+        const size = BLOCK * scale;
+        bgCtx.fillRect(x, y, size, size);
+        bgCtx.strokeRect(x, y, size, size);
+      }
+
+      minimapBackground = bgCanvas;
+      minimapBackgroundSize = minimapSize;
+      minimapBackgroundRatio = ratio;
+      return minimapBackground;
+    }
+
     function drawMinimap() {
       const visible = wantedLevel > 0;
       minimapCanvas.classList.toggle("visible", visible);
@@ -2742,19 +2834,7 @@
       const scale = minimapSize / WORLD;
       const dotScale = minimapSize / MINIMAP_SIZE;
       minimapCtx.clearRect(0, 0, minimapSize, minimapSize);
-      minimapCtx.fillStyle = "#20252a";
-      minimapCtx.fillRect(0, 0, minimapSize, minimapSize);
-
-      minimapCtx.fillStyle = "rgba(188, 168, 111, 0.25)";
-      minimapCtx.strokeStyle = "rgba(255, 244, 210, 0.15)";
-      minimapCtx.lineWidth = 1;
-      for (const block of blocks) {
-        const x = blockWorldX(block.gx) * scale;
-        const y = blockWorldY(block.gy) * scale;
-        const size = BLOCK * scale;
-        minimapCtx.fillRect(x, y, size, size);
-        minimapCtx.strokeRect(x, y, size, size);
-      }
+      minimapCtx.drawImage(getMinimapBackground(), 0, 0, minimapSize, minimapSize);
 
       for (const police of policeCars) {
         drawMinimapDot(

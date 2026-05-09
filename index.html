@@ -1950,8 +1950,8 @@
 
     function createCamera() {
       const speedFactor = Math.min(1, Math.abs(player.speed) / player.maxSpeed);
-      const stoppedZoom = 2;
-      const highSpeedZoom = 1.3;
+      const stoppedZoom = 1.5;
+      const highSpeedZoom = 1.1;
       const zoom = stoppedZoom - speedFactor * (stoppedZoom - highSpeedZoom);
       return {
         x: player.x,

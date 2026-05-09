@@ -1692,6 +1692,8 @@
 
       if (a === player || b === player) {
         const car = a === player ? b : a;
+        const previousBlockedTime = car.blockedTime || 0;
+        const previousStuckTime = car.stuckTime || 0;
         const impactSpeed = Math.abs(player.speed);
         const dirX = a === player ? nx : -nx;
         const dirY = a === player ? ny : -ny;
@@ -1722,11 +1724,13 @@
           if (recoverySeconds > 0) {
             car.hitStopTimer = Math.max(car.hitStopTimer, recoverySeconds);
             car.yieldTimer = Math.max(car.yieldTimer, recoverySeconds);
+            car.blockedTime = 0;
+            car.stuckTime = 0;
           } else {
             car.yieldTimer = Math.max(car.yieldTimer, 0.25);
+            car.blockedTime = Math.max(car.blockedTime, previousBlockedTime, 0.4);
+            car.stuckTime = Math.max(car.stuckTime, previousStuckTime, 0.4);
           }
-          car.blockedTime = 0;
-          car.stuckTime = 0;
           car.overtakeTimer = 0;
           car.emergencyTimer = 0;
           car.reverseTimer = 0;

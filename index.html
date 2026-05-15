@@ -391,6 +391,8 @@
     const HOUSE = BLOCK / 3;
     const LANE_WIDTH = ROAD / 2;
     const HOUSE_CELLS = [[0, 0], [1, 0], [2, 0], [0, 1], [2, 1], [0, 2], [1, 2], [2, 2]];
+    const BUILDING_INSET = 5;
+    const BUILDING_SIZE = HOUSE - BUILDING_INSET * 2;
     const TOTAL_CARS = 200;
     const POLICE_COUNT = 20;
     const TURN_ARC = 0.2;
@@ -552,11 +554,91 @@
     let gameOverFading = false;
     let minimapSize = MINIMAP_SIZE;
     let lastTime = performance.now();
+    let aiDecisionFrame = 0;
     const trafficIndex = createSpatialIndex(96);
     const collisionIndex = createSpatialIndex(72);
     let minimapBackground = null;
     let minimapBackgroundSize = 0;
     let minimapBackgroundRatio = 0;
+    const BUILDING_SPRITE_RATIO = 2;
+    const buildingSpriteCache = new Map();
+    const PERF_DEBUG = new URLSearchParams(window.location.search).has("perf");
+    const perfProfiler = {
+      active: PERF_DEBUG,
+      startedAt: performance.now(),
+      frames: 0,
+      frameTotal: 0,
+      maxFrame: 0,
+      overBudgetFrames: 0,
+      buckets: Object.create(null),
+      counts: Object.create(null),
+      samples: [],
+      lastSummaryAt: 0
+    };
+
+    function perfAdd(bucket, elapsed) {
+      if (!PERF_DEBUG) return;
+      perfProfiler.buckets[bucket] = (perfProfiler.buckets[bucket] || 0) + elapsed;
+    }
+
+    function perfCount(name, amount = 1) {
+      if (!PERF_DEBUG) return;
+      perfProfiler.counts[name] = (perfProfiler.counts[name] || 0) + amount;
+    }
+
+    function perfMeasure(bucket, fn) {
+      if (!PERF_DEBUG) return fn();
+      const started = performance.now();
+      try {
+        return fn();
+      } finally {
+        perfAdd(bucket, performance.now() - started);
+      }
+    }
+
+    function buildPerfReport() {
+      const elapsedMs = Math.max(1, performance.now() - perfProfiler.startedAt);
+      const frames = Math.max(1, perfProfiler.frames);
+      const buckets = Object.entries(perfProfiler.buckets)
+        .map(([name, totalMs]) => ({
+          name,
+          totalMs,
+          avgMs: totalMs / frames,
+          share: perfProfiler.frameTotal ? totalMs / perfProfiler.frameTotal : 0
+        }))
+        .sort((a, b) => b.totalMs - a.totalMs);
+
+      return {
+        elapsedMs: Math.round(elapsedMs),
+        frames: perfProfiler.frames,
+        fps: Number((perfProfiler.frames / (elapsedMs / 1000)).toFixed(1)),
+        avgFrameMs: Number((perfProfiler.frameTotal / frames).toFixed(3)),
+        maxFrameMs: Number(perfProfiler.maxFrame.toFixed(3)),
+        overBudgetFrames: perfProfiler.overBudgetFrames,
+        buckets: buckets.map(row => ({
+          name: row.name,
+          totalMs: Number(row.totalMs.toFixed(2)),
+          avgMs: Number(row.avgMs.toFixed(3)),
+          sharePct: Number((row.share * 100).toFixed(1))
+        })),
+        counts: { ...perfProfiler.counts }
+      };
+    }
+
+    function logPerfReport(label = "manual") {
+      if (!PERF_DEBUG) return null;
+      const report = buildPerfReport();
+      console.log("[perf] " + label, report);
+      console.table(report.buckets.slice(0, 12));
+      console.log("[perf] counts", report.counts);
+      return report;
+    }
+
+    window.__cityBlocksPerf = {
+      report: buildPerfReport,
+      log: logPerfReport,
+      profiler: perfProfiler
+    };
 
     function getMinimapSize() {
       return window.matchMedia(PHONE_LAYOUT_QUERY).matches ? PHONE_MINIMAP_SIZE : MINIMAP_SIZE;
@@ -607,6 +689,7 @@
     }
 
     function rebuildSpatialIndex(index, items) {
+      perfCount("spatialRebuilds");
       index.buckets.clear();
       for (const item of items) {
         const ix = Math.floor(item.x / index.cellSize);
@@ -622,6 +705,7 @@
     }
 
     function nearbyCars(index, x, y, radius) {
+      perfCount("nearbyCarsCalls");
       const results = index.results;
       results.length = 0;
       const minIX = Math.floor((x - radius) / index.cellSize);
@@ -635,6 +719,7 @@
           for (const car of bucket) results.push(car);
         }
       }
+      perfCount("nearbyCarsResults", results.length);
       return results;
     }
 
@@ -787,7 +872,7 @@
           blocks.push({ gx, gy, police, houses });
         }
       }
-      invalidateMinimapBackground();
+      invalidateStaticRenderCaches();
     }
 
     function blockAt(gx, gy) {
@@ -809,10 +894,9 @@
       const hy = Math.floor(ly / HOUSE);
       if (hx === 1 && hy === 1) return false;
 
-      const inset = 5;
       const localX = lx - hx * HOUSE;
       const localY = ly - hy * HOUSE;
-      return localX >= inset && localX <= HOUSE - inset && localY >= inset && localY <= HOUSE - inset;
+      return localX >= BUILDING_INSET && localX <= HOUSE - BUILDING_INSET && localY >= BUILDING_INSET && localY <= HOUSE - BUILDING_INSET;
     }
 
     function buildingRectAt(x, y) {
@@ -829,37 +913,98 @@
       const hy = Math.floor(ly / HOUSE);
       if (hx === 1 && hy === 1) return null;
 
-      const inset = 5;
       const localX = lx - hx * HOUSE;
       const localY = ly - hy * HOUSE;
-      if (localX < inset || localX > HOUSE - inset || localY < inset || localY > HOUSE - inset) return null;
+      if (localX < BUILDING_INSET || localX > HOUSE - BUILDING_INSET || localY < BUILDING_INSET || localY > HOUSE - BUILDING_INSET) return null;
 
       return {
-        x: blockWorldX(gx) + hx * HOUSE + inset,
-        y: blockWorldY(gy) + hy * HOUSE + inset,
-        w: HOUSE - inset * 2,
-        h: HOUSE - inset * 2
+        x: blockWorldX(gx) + hx * HOUSE + BUILDING_INSET,
+        y: blockWorldY(gy) + hy * HOUSE + BUILDING_INSET,
+        w: BUILDING_SIZE,
+        h: BUILDING_SIZE
       };
     }
 
+    function aabbOverlapsBuilding(minX, minY, maxX, maxY) {
+      const minGX = clamp(Math.floor((minX - ROAD) / CELL), 0, GRID - 1);
+      const maxGX = clamp(Math.floor((maxX - ROAD) / CELL), 0, GRID - 1);
+      const minGY = clamp(Math.floor((minY - ROAD) / CELL), 0, GRID - 1);
+      const maxGY = clamp(Math.floor((maxY - ROAD) / CELL), 0, GRID - 1);
+
+      for (let gy = minGY; gy <= maxGY; gy++) {
+        const blockY = ROAD + gy * CELL;
+        if (maxY < blockY || minY > blockY + BLOCK) continue;
+        for (let gx = minGX; gx <= maxGX; gx++) {
+          const blockX = ROAD + gx * CELL;
+          if (maxX < blockX || minX > blockX + BLOCK) continue;
+
+          const localMinX = Math.max(0, minX - blockX);
+          const localMaxX = Math.min(BLOCK, maxX - blockX);
+          const localMinY = Math.max(0, minY - blockY);
+          const localMaxY = Math.min(BLOCK, maxY - blockY);
+          const minHX = clamp(Math.floor((localMinX - BUILDING_INSET) / HOUSE), 0, 2);
+          const maxHX = clamp(Math.floor((localMaxX - BUILDING_INSET) / HOUSE), 0, 2);
+          const minHY = clamp(Math.floor((localMinY - BUILDING_INSET) / HOUSE), 0, 2);
+          const maxHY = clamp(Math.floor((localMaxY - BUILDING_INSET) / HOUSE), 0, 2);
+
+          for (let hy = minHY; hy <= maxHY; hy++) {
+            const ry = hy * HOUSE + BUILDING_INSET;
+            if (localMaxY < ry || localMinY > ry + BUILDING_SIZE) continue;
+            for (let hx = minHX; hx <= maxHX; hx++) {
+              if (hx === 1 && hy === 1) continue;
+              const rx = hx * HOUSE + BUILDING_INSET;
+              if (localMaxX >= rx && localMinX <= rx + BUILDING_SIZE) {
+                return true;
+              }
+            }
+          }
+        }
+      }
+
+      return false;
+    }
+
+    function pointHitsBuilding(wx, wy) {
+      if (wx < 5 || wy < 5 || wx > WORLD - 5 || wy > WORLD - 5) return true;
+      return inBuilding(wx, wy);
+    }
+
     function rectHitsBuilding(cx, cy, length, width, angle) {
+      perfCount("rectHitsBuildingCalls");
       const cos = Math.cos(angle);
       const sin = Math.sin(angle);
       const halfL = length / 2;
       const halfW = width / 2;
-      const points = [];
+      const extentX = Math.abs(cos) * halfL + Math.abs(sin) * halfW;
+      const extentY = Math.abs(sin) * halfL + Math.abs(cos) * halfW;
+      const minX = cx - extentX;
+      const maxX = cx + extentX;
+      const minY = cy - extentY;
+      const maxY = cy + extentY;
+
+      if (minX < 5 || minY < 5 || maxX > WORLD - 5 || maxY > WORLD - 5) return true;
+      if (!aabbOverlapsBuilding(minX, minY, maxX, maxY)) {
+        perfCount("rectHitsBuildingAabbMisses");
+        return false;
+      }
+
       for (let ix = -1; ix <= 1; ix++) {
         for (let iy = -1; iy <= 1; iy++) {
-          points.push([halfL * ix, halfW * iy]);
+          const px = halfL * ix;
+          const py = halfW * iy;
+          const wx = cx + px * cos - py * sin;
+          const wy = cy + px * sin + py * cos;
+          if (pointHitsBuilding(wx, wy)) return true;
         }
       }
-      points.push([-halfL * 0.65, -halfW], [halfL * 0.65, -halfW], [-halfL * 0.65, halfW], [halfL * 0.65, halfW]);
-
-      for (const [px, py] of points) {
-        const wx = cx + px * cos - py * sin;
-        const wy = cy + px * sin + py * cos;
-        if (wx < 5 || wy < 5 || wx > WORLD - 5 || wy > WORLD - 5) return true;
-        if (inBuilding(wx, wy)) return true;
+      for (let ix = -1; ix <= 1; ix += 2) {
+        const px = halfL * 0.65 * ix;
+        for (let iy = -1; iy <= 1; iy += 2) {
+          const py = halfW * iy;
+          const wx = cx + px * cos - py * sin;
+          const wy = cy + px * sin + py * cos;
+          if (pointHitsBuilding(wx, wy)) return true;
+        }
       }
       return false;
     }
@@ -981,6 +1126,15 @@
         this.pushY = 0;
         this.pushVX = 0;
         this.pushVY = 0;
+        this.lookaheadInterval = 10;
+        this.lookaheadPhase = this.id % this.lookaheadInterval;
+        this.lookaheadFrame = -1;
+        this.lookahead = {
+          blockedInfo: { blocked: false, blocker: null },
+          overtakeSafe: false,
+          mergeUnsafe: false,
+          chaseLateral: 0
+        };
 
         for (let attempt = 0; attempt < 100; attempt++) {
           const ix = randInt(0, GRID);
@@ -1014,20 +1168,22 @@
         let x = pose.x + pushX;
         let y = pose.y + pushY;
 
-        for (let attempt = 0; attempt < 8 && rectHitsBuilding(x, y, this.length, this.width, this.angle); attempt++) {
-          pushX *= 0.45;
-          pushY *= 0.45;
-          x = pose.x + pushX;
-          y = pose.y + pushY;
-        }
+        if (pushX || pushY) {
+          for (let attempt = 0; attempt < 8 && rectHitsBuilding(x, y, this.length, this.width, this.angle); attempt++) {
+            pushX *= 0.45;
+            pushY *= 0.45;
+            x = pose.x + pushX;
+            y = pose.y + pushY;
+          }
 
-        if (rectHitsBuilding(x, y, this.length, this.width, this.angle)) {
-          pushX = 0;
-          pushY = 0;
-          this.pushVX = 0;
-          this.pushVY = 0;
-          x = pose.x;
-          y = pose.y;
+          if (rectHitsBuilding(x, y, this.length, this.width, this.angle)) {
+            pushX = 0;
+            pushY = 0;
+            this.pushVX = 0;
+            this.pushVY = 0;
+            x = pose.x;
+            y = pose.y;
+          }
         }
 
         this.pushX = pushX;
@@ -1227,6 +1383,37 @@
         return bestLateral;
       }
 
+      shouldRefreshLookahead(frameIndex) {
+        if (this.lookaheadFrame < 0) return true;
+        return frameIndex % this.lookaheadInterval === this.lookaheadPhase;
+      }
+
+      invalidateLookahead() {
+        this.lookaheadFrame = -1;
+      }
+
+      refreshLookahead(allCars, player, frameIndex) {
+        const info = this.blockedInfo(allCars, player);
+        const chasingPolice = this.isPolice && this.chasing;
+        const blockedByPlayer = info.blocker === player;
+        const urgentPass = chasingPolice || blockedByPlayer;
+        const activeUrgentPass = this.overtakeTimer > 0 && this.overtakeUrgent;
+        const overtakeSafe = info.blocked
+          && (!blockedByPlayer || this.blockedTime > 0.35 || chasingPolice)
+          && this.overtakeIsSafe(allCars, player, -LANE_WIDTH, urgentPass, chasingPolice);
+        const mergeUnsafe = this.overtakeTimer > 0
+          && !this.overtakeIsSafe(allCars, player, -LANE_WIDTH, activeUrgentPass || chasingPolice, chasingPolice);
+        const chaseLateral = chasingPolice ? this.pickChaseLateral(allCars, player) : this.lookahead.chaseLateral;
+
+        this.lookaheadFrame = frameIndex;
+        this.lookahead.blockedInfo = info;
+        this.lookahead.overtakeSafe = overtakeSafe;
+        this.lookahead.mergeUnsafe = mergeUnsafe;
+        this.lookahead.chaseLateral = chaseLateral;
+        perfCount("aiLookaheadRefreshes");
+        return this.lookahead;
+      }
+
       policeNeedsRightOfWay(allCars) {
         if (this.isPolice) return false;
         for (const police of policeCars) {
@@ -1288,6 +1475,7 @@
           this.blockedTime = 0;
           this.stuckTime = 0;
           this.refreshPosition();
+          this.invalidateLookahead();
           return true;
         }
 
@@ -1339,6 +1527,7 @@
         this.blockedTime = 0;
         this.stuckTime = 0;
         this.refreshPosition();
+        this.invalidateLookahead();
         return true;
       }
 
@@ -1363,6 +1552,7 @@
           this.overtakeTimer = 2.6;
           this.overtakeUrgent = true;
           this.stuckTime = STUCK_ESCAPE_SECONDS * 0.7;
+          this.invalidateLookahead();
           return true;
         }
 
@@ -1375,13 +1565,14 @@
           this.overtakeUrgent = false;
           this.targetLateral = 0;
           this.stuckTime = STUCK_ESCAPE_SECONDS * 0.7;
+          this.invalidateLookahead();
           return true;
         }
 
         return false;
       }
 
-      update(dt, allCars, player) {
+      update(dt, allCars, player, frameIndex) {
         if (this.playerHitCooldown > 0) this.playerHitCooldown = Math.max(0, this.playerHitCooldown - dt);
         const prevX = this.x;
         const prevY = this.y;
@@ -1417,11 +1608,15 @@
         this.speed = approach(this.speed, targetSpeed, rate * dt);
         const alignFactor = this.angleAlignFactor();
         const progressStep = this.speed > CAR_PHYSICS.renderMinVectorSpeed ? this.speed * dt / CELL * alignFactor : 0;
-        const info = this.blockedInfo(allCars, player);
+        const refreshLookahead = this.shouldRefreshLookahead(frameIndex);
+        const lookahead = refreshLookahead
+          ? this.refreshLookahead(allCars, player, frameIndex)
+          : this.lookahead;
+        const info = lookahead.blockedInfo;
         const blocked = info.blocked;
         this.blockedTime = blocked ? this.blockedTime + dt : 0;
         this.stuckTime = blocked ? this.stuckTime + dt : Math.max(0, this.stuckTime - dt * 2);
-        if (this.tryEmergencyEscape(allCars, player)) {
+        if (refreshLookahead && this.tryEmergencyEscape(allCars, player)) {
           this.updateAngle(dt);
           return;
         }
@@ -1431,7 +1626,7 @@
         const urgentPass = chasingPolice || blockedByPlayer;
         const canPass = blocked
           && (!blockedByPlayer || this.blockedTime > 0.35 || chasingPolice)
-          && this.overtakeIsSafe(allCars, player, -LANE_WIDTH, urgentPass, chasingPolice);
+          && lookahead.overtakeSafe;
         const midBlockJam = blocked && !canPass && !this.chasing && this.progress > 0.14 && this.progress < 0.82;
         const impatient = this.blockedTime > (this.isPolice ? 0.45 : 0.9) && !midBlockJam;
 
@@ -1449,7 +1644,7 @@
         const mergeProgress = activeUrgentPass ? 0.82 : (chasingPolice ? 0.74 : 0.62);
         const mustMergeBack = !chasingPolice && (
           this.progress > mergeProgress
-          || (this.overtakeTimer > 0 && !this.overtakeIsSafe(allCars, player, -LANE_WIDTH, activeUrgentPass || chasingPolice, chasingPolice))
+          || lookahead.mergeUnsafe
         );
         if (mustMergeBack) {
           this.overtakeTimer = 0;
@@ -1457,7 +1652,7 @@
         }
         if (this.progress > 0.74) this.emergencyTimer = 0;
         this.targetLateral = chasingPolice
-          ? this.pickChaseLateral(allCars, player)
+          ? (this.progress > 0.82 ? 0 : lookahead.chaseLateral)
           : (this.overtakeTimer > 0 || this.emergencyTimer > 0 ? -LANE_WIDTH : (this.rightOfWayTimer > 0 ? 10 : 0));
         const lateralStep = 82 * dt;
         const prevProgress = this.progress;
@@ -1499,6 +1694,7 @@
           this.reverseTimer = 0;
           this.stuckTime = 0;
           this.pickNextDirection(player);
+          this.invalidateLookahead();
         }
         this.refreshPosition();
         this.updateMotionVector(prevX, prevY, dt);
@@ -1632,6 +1828,7 @@
       lastHitPoints = 0;
       survivalTime = 0;
       noChaseTimer = 0;
+      aiDecisionFrame = 0;
       gameOverTimer = 0;
       gameOverStartedAt = 0;
       gameOverFading = false;
@@ -1844,10 +2041,11 @@
     function resolveCarPair(a, b) {
       const dx = b.x - a.x;
       const dy = b.y - a.y;
-      const d = Math.max(0.001, Math.hypot(dx, dy));
       const minD = (a.radius || 13) + (b.radius || 13);
-      if (d >= minD) return false;
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= minD * minD) return false;
 
+      const d = Math.max(0.001, Math.sqrt(d2));
       const overlap = minD - d;
       const nx = dx / d;
       const ny = dy / d;
@@ -1969,16 +2167,23 @@
 
     function resolveCollisions() {
       for (let pass = 0; pass < 3; pass++) {
+        let resolvedAny = false;
+        perfCount("collisionPasses");
         rebuildSpatialIndex(collisionIndex, cars);
+        for (const car of nearbyCars(collisionIndex, player.x, player.y, 40)) {
+          if (resolveCarPair(player, car)) resolvedAny = true;
+        }
+
         for (let i = 0; i < cars.length; i++) {
-          resolveCarPair(player, cars[i]);
           const car = cars[i];
           for (const other of nearbyCars(collisionIndex, car.x, car.y, 36)) {
             if (other === car || other.id <= car.id) continue;
             if (Math.abs(car.x - other.x) > 36 || Math.abs(car.y - other.y) > 36) continue;
-            resolveCarPair(car, other);
+            if (resolveCarPair(car, other)) resolvedAny = true;
           }
         }
+        if (!resolvedAny) break;
+        perfCount("collisionResolvedPasses");
       }
       pushPlayerOutOfBuilding();
     }
@@ -1996,23 +2201,28 @@
       }
 
       survivalTime += dt;
-      updatePlayer(dt);
-      rebuildSpatialIndex(trafficIndex, cars);
-      for (const car of cars) car.update(dt, cars, player);
-      updatePoliceChases();
-      resolveCollisions();
-      updateNoChaseTimer(dt);
+      perfMeasure("update.player", () => updatePlayer(dt));
+      perfMeasure("update.rebuildTrafficIndex", () => rebuildSpatialIndex(trafficIndex, cars));
+      aiDecisionFrame++;
+      perfMeasure("update.aiCars", () => {
+        for (const car of cars) car.update(dt, cars, player, aiDecisionFrame);
+      });
+      perfMeasure("update.policeChases", updatePoliceChases);
+      perfMeasure("update.resolveCollisions", resolveCollisions);
+      perfMeasure("update.noChaseTimer", () => updateNoChaseTimer(dt));
 
-      for (const ped of pedestrians) {
-        ped.t += ped.speed * dt;
-        if (ped.t >= 4) ped.t -= 4;
-      }
+      perfMeasure("update.pedestrians", () => {
+        for (const ped of pedestrians) {
+          ped.t += ped.speed * dt;
+          if (ped.t >= 4) ped.t -= 4;
+        }
+      });
     }
 
     function createCamera() {
       const speedFactor = Math.min(1, Math.abs(player.speed) / player.maxSpeed);
       const stoppedZoom = 1.5;
-      const highSpeedZoom = 1;
+      const highSpeedZoom = 1.2;
       const zoom = stoppedZoom - speedFactor * (stoppedZoom - highSpeedZoom);
       return {
         x: player.x,
@@ -2472,10 +2682,44 @@
       return 8 + house.floors * 5.5;
     }
 
-    function drawBuilding(baseX, baseY, size, house, cam) {
+    function drawPolyOnContext(targetCtx, points, fill, stroke = null) {
+      targetCtx.beginPath();
+      targetCtx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) targetCtx.lineTo(points[i].x, points[i].y);
+      targetCtx.closePath();
+      targetCtx.fillStyle = fill;
+      targetCtx.fill();
+      if (stroke) {
+        targetCtx.strokeStyle = stroke;
+        targetCtx.lineWidth = 1;
+        targetCtx.stroke();
+      }
+    }
+
+    function drawWindowOnFaceOnContext(targetCtx, tl, tr, br, bl, u0, u1, v0, v1) {
+      const frame = faceQuad(tl, tr, br, bl, u0, u1, v0, v1);
+      drawPolyOnContext(targetCtx, frame, palette.frame, "rgba(70, 54, 38, 0.28)");
+
+      const glass = insetQuad(frame, 0.18);
+      drawPolyOnContext(targetCtx, glass, palette.glass);
+
+      const darkPane = faceQuad(tl, tr, br, bl, u0 + (u1 - u0) * 0.52, u1 - (u1 - u0) * 0.16, v0 + (v1 - v0) * 0.18, v1 - (v1 - v0) * 0.18);
+      drawPolyOnContext(targetCtx, darkPane, palette.glassDark);
+
+      const vDiv = faceQuad(tl, tr, br, bl, u0 + (u1 - u0) * 0.47, u0 + (u1 - u0) * 0.54, v0 + (v1 - v0) * 0.18, v1 - (v1 - v0) * 0.18);
+      const hDiv = faceQuad(tl, tr, br, bl, u0 + (u1 - u0) * 0.16, u1 - (u1 - u0) * 0.16, v0 + (v1 - v0) * 0.47, v0 + (v1 - v0) * 0.54);
+      drawPolyOnContext(targetCtx, vDiv, palette.frame);
+      drawPolyOnContext(targetCtx, hDiv, palette.frame);
+    }
+
+    function buildingSpriteKey(house, size) {
+      return [size, house.floors, house.colorIndex, house.police ? 1 : 0].join(":");
+    }
+
+    function drawBuildingSprite(targetCtx, originX, originY, size, house) {
       const inset = 5;
-      const x = baseX + inset;
-      const y = baseY + inset;
+      const x = originX + inset;
+      const y = originY + inset;
       const w = size - inset * 2;
       const h = size - inset * 2;
       const floors = house.floors;
@@ -2484,19 +2728,19 @@
       const rightColor = house.police ? palette.policeFace : palette.rightFace[house.colorIndex];
       const bottomColor = house.police ? "#35699f" : palette.bottomFace[house.colorIndex];
 
-      const a = worldToScreen(x, y, cam);
-      const b = worldToScreen(x + w, y, cam);
-      const c = worldToScreen(x + w, y + h, cam);
-      const d = worldToScreen(x, y + h, cam);
-      const hx = -rise * 0.42 * cam.scale;
-      const hy = -rise * 0.72 * cam.scale;
+      const a = { x, y };
+      const b = { x: x + w, y };
+      const c = { x: x + w, y: y + h };
+      const d = { x, y: y + h };
+      const hx = -rise * 0.42;
+      const hy = -rise * 0.72;
       const at = { x: a.x + hx, y: a.y + hy };
       const bt = { x: b.x + hx, y: b.y + hy };
       const ct = { x: c.x + hx, y: c.y + hy };
       const dt = { x: d.x + hx, y: d.y + hy };
 
-      const shadowOffset = 7 * cam.scale;
-      drawPoly([
+      const shadowOffset = 7;
+      drawPolyOnContext(targetCtx, [
         { x: a.x + shadowOffset, y: a.y + shadowOffset },
         { x: b.x + shadowOffset, y: b.y + shadowOffset },
         { x: c.x + shadowOffset * 1.7, y: c.y + shadowOffset * 1.5 },
@@ -2505,38 +2749,88 @@
 
       const southFace = [dt, ct, c, d];
       const eastFace = [bt, ct, c, b];
-      drawPoly(southFace, bottomColor, "rgba(67, 42, 29, 0.24)");
-      drawPoly(eastFace, rightColor, "rgba(67, 42, 29, 0.24)");
+      drawPolyOnContext(targetCtx, southFace, bottomColor, "rgba(67, 42, 29, 0.24)");
+      drawPolyOnContext(targetCtx, eastFace, rightColor, "rgba(67, 42, 29, 0.24)");
 
       for (let row = 0; row < floors; row++) {
         const v0 = (row + 0.18) / floors;
         const v1 = (row + 0.68) / floors;
-        drawWindowOnFace(dt, ct, c, d, 0.18, 0.34, v0, v1);
-        drawWindowOnFace(dt, ct, c, d, 0.62, 0.78, v0, v1);
-        drawWindowOnFace(bt, ct, c, b, 0.18, 0.34, v0, v1);
-        drawWindowOnFace(bt, ct, c, b, 0.60, 0.76, v0, v1);
+        drawWindowOnFaceOnContext(targetCtx, dt, ct, c, d, 0.18, 0.34, v0, v1);
+        drawWindowOnFaceOnContext(targetCtx, dt, ct, c, d, 0.62, 0.78, v0, v1);
+        drawWindowOnFaceOnContext(targetCtx, bt, ct, c, b, 0.18, 0.34, v0, v1);
+        drawWindowOnFaceOnContext(targetCtx, bt, ct, c, b, 0.60, 0.76, v0, v1);
       }
 
-      drawPoly([at, bt, ct, dt], roofColor, "rgba(65, 43, 30, 0.48)");
+      drawPolyOnContext(targetCtx, [at, bt, ct, dt], roofColor, "rgba(65, 43, 30, 0.48)");
 
-      ctx.strokeStyle = "rgba(255, 231, 178, 0.22)";
-      ctx.lineWidth = Math.max(1, cam.scale * 0.8);
-      ctx.beginPath();
-      ctx.moveTo(at.x, at.y);
-      ctx.lineTo(bt.x, bt.y);
-      ctx.lineTo(ct.x, ct.y);
-      ctx.lineTo(dt.x, dt.y);
-      ctx.closePath();
-      ctx.stroke();
+      targetCtx.strokeStyle = "rgba(255, 231, 178, 0.22)";
+      targetCtx.lineWidth = 1;
+      targetCtx.beginPath();
+      targetCtx.moveTo(at.x, at.y);
+      targetCtx.lineTo(bt.x, bt.y);
+      targetCtx.lineTo(ct.x, ct.y);
+      targetCtx.lineTo(dt.x, dt.y);
+      targetCtx.closePath();
+      targetCtx.stroke();
 
       if (house.police) {
         const signP = quadPoint(at, bt, ct, dt, 0.5, 0.52);
-        ctx.fillStyle = "#ffffff";
-        ctx.font = `${Math.max(9, 14 * cam.scale)}px ui-monospace, monospace`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("P", signP.x, signP.y);
+        targetCtx.fillStyle = "#ffffff";
+        targetCtx.font = "14px ui-monospace, monospace";
+        targetCtx.textAlign = "center";
+        targetCtx.textBaseline = "middle";
+        targetCtx.fillText("P", signP.x, signP.y);
       }
+    }
+
+    function getBuildingSprite(house, size) {
+      const key = buildingSpriteKey(house, size);
+      const cached = buildingSpriteCache.get(key);
+      if (cached) return cached;
+
+      perfCount("buildingSpriteCacheMisses");
+      const inset = 5;
+      const w = size - inset * 2;
+      const h = size - inset * 2;
+      const rise = buildingRise(house);
+      const shadowOffset = 7;
+      const pad = 3;
+      const minX = inset - rise * 0.42 - pad;
+      const minY = inset - rise * 0.72 - pad;
+      const maxX = inset + w + shadowOffset * 1.7 + pad;
+      const maxY = inset + h + shadowOffset * 1.8 + pad;
+      const width = Math.ceil(maxX - minX);
+      const height = Math.ceil(maxY - minY);
+      const spriteCanvas = document.createElement("canvas");
+      spriteCanvas.width = Math.ceil(width * BUILDING_SPRITE_RATIO);
+      spriteCanvas.height = Math.ceil(height * BUILDING_SPRITE_RATIO);
+
+      const spriteCtx = spriteCanvas.getContext("2d");
+      spriteCtx.setTransform(BUILDING_SPRITE_RATIO, 0, 0, BUILDING_SPRITE_RATIO, 0, 0);
+      drawBuildingSprite(spriteCtx, -minX, -minY, size, house);
+
+      const sprite = {
+        canvas: spriteCanvas,
+        offsetX: minX,
+        offsetY: minY,
+        width,
+        height
+      };
+      buildingSpriteCache.set(key, sprite);
+      return sprite;
+    }
+
+    function drawBuilding(baseX, baseY, size, house, cam) {
+      perfCount("drawBuildingCalls");
+      const sprite = getBuildingSprite(house, size);
+      const p = worldToScreen(baseX, baseY, cam);
+      ctx.drawImage(
+        sprite.canvas,
+        p.x + sprite.offsetX * cam.scale,
+        p.y + sprite.offsetY * cam.scale,
+        sprite.width * cam.scale,
+        sprite.height * cam.scale
+      );
     }
 
     function blockVisible(block, cam) {
@@ -2547,6 +2841,7 @@
 
     function drawBlockGround(block, cam) {
       if (!blockVisible(block, cam)) return;
+      perfCount("visibleBlocks");
       const x = blockWorldX(block.gx);
       const y = blockWorldY(block.gy);
       drawWorldRect(x - 9, y - 9, BLOCK + 18, BLOCK + 18, cam, palette.sidewalk);
@@ -2572,7 +2867,9 @@
         const baseY = y + house.hy * HOUSE;
         const rise = buildingRise(house);
         if (!rectVisible(baseX - rise * 0.48, baseY - rise * 0.78, HOUSE + rise * 0.6, HOUSE + rise * 0.9, cam, 50)) continue;
+        perfCount("queuedBuildings");
         renderables.push({
+          type: "building",
           depth: baseY + HOUSE - 5,
           order: renderables.length,
           draw: () => drawBuilding(baseX, baseY, HOUSE, house, cam)
@@ -2581,6 +2878,7 @@
     }
 
     function drawPedestrian(ped, cam) {
+      perfCount("drawPedestrianCalls");
       const [x, y] = pedestrianPosition(ped);
       const p = worldToScreen(x, y, cam);
       ctx.fillStyle = "rgba(30, 22, 18, 0.22)";
@@ -2711,6 +3009,7 @@
 
     function drawCar(car, cam, isPlayer = false) {
       if (!rectVisible(car.x - 35, car.y - 35, 70, 70, cam, 50)) return;
+      perfCount(isPlayer ? "drawPlayerCalls" : "drawCarCalls");
       const p = worldToScreen(car.x, car.y, cam);
       const scale = cam.scale;
       const { length, width } = carSpriteSize(car, scale, isPlayer);
@@ -2738,7 +3037,7 @@
     }
 
     function draw(cam) {
-      drawRoads(cam);
+      perfMeasure("draw.roads", () => drawRoads(cam));
       const renderables = [];
 
       const minGX = clamp(Math.floor((cam.x - cam.w / (2 * cam.scale) - ROAD) / CELL) - 1, 0, GRID - 1);
@@ -2749,15 +3048,17 @@
       for (let gy = minGY; gy <= maxGY; gy++) {
         for (let gx = minGX; gx <= maxGX; gx++) {
           const block = blockAt(gx, gy);
-          drawBlockGround(block, cam);
-          queueBlockBuildings(block, renderables, cam);
+          perfMeasure("draw.blockGround", () => drawBlockGround(block, cam));
+          perfMeasure("draw.queueBuildings", () => queueBlockBuildings(block, renderables, cam));
         }
       }
 
       for (const ped of pedestrians) {
         const [x, y] = pedestrianPosition(ped);
         if (!rectVisible(x - 5, y - 5, 10, 10, cam, 30)) continue;
+        perfCount("queuedPedestrians");
         renderables.push({
+          type: "pedestrian",
           depth: y + 4,
           order: renderables.length,
           draw: () => drawPedestrian(ped, cam)
@@ -2766,20 +3067,30 @@
 
       for (const car of cars) {
         if (!rectVisible(car.x - 35, car.y - 35, 70, 70, cam, 50)) continue;
+        perfCount("queuedCars");
         renderables.push({
+          type: "car",
           depth: car.y + (car.radius || 16),
           order: renderables.length,
           draw: () => drawCar(car, cam)
         });
       }
       renderables.push({
+        type: "player",
         depth: player.y + player.radius,
         order: renderables.length,
         draw: () => drawCar(player, cam, true)
       });
 
-      renderables.sort((a, b) => a.depth - b.depth || a.order - b.order);
-      for (const item of renderables) item.draw();
+      perfCount("renderables", renderables.length);
+      perfMeasure("draw.sortRenderables", () => {
+        renderables.sort((a, b) => a.depth - b.depth || a.order - b.order);
+      });
+      perfMeasure("draw.renderables", () => {
+        for (const item of renderables) {
+          perfMeasure("draw.renderable." + item.type, item.draw);
+        }
+      });
     }
 
     function drawMinimapDot(mapCtx, x, y, radius, fill, stroke = null) {
@@ -2798,6 +3109,11 @@
       minimapBackground = null;
       minimapBackgroundSize = 0;
       minimapBackgroundRatio = 0;
+    }
+
+    function invalidateStaticRenderCaches() {
+      buildingSpriteCache.clear();
+      invalidateMinimapBackground();
     }
 
     function getMinimapBackground() {
@@ -2867,15 +3183,29 @@
     }
 
     function frame(now) {
+      const frameStarted = PERF_DEBUG ? performance.now() : 0;
       const dt = Math.min(0.05, (now - lastTime) / 1000 || 0);
       lastTime = now;
-      if (debugRecorder.mode !== "selecting") update(dt);
-      const cam = createCamera();
-      draw(cam);
-      recordDebugFrame(cam, now);
-      updateHud();
-      drawMinimap();
-      updateDebugStatus(now);
+      if (debugRecorder.mode !== "selecting") perfMeasure("frame.update", () => update(dt));
+      const cam = perfMeasure("frame.createCamera", createCamera);
+      perfMeasure("frame.draw", () => draw(cam));
+      perfMeasure("frame.recordDebugFrame", () => recordDebugFrame(cam, now));
+      perfMeasure("frame.updateHud", updateHud);
+      perfMeasure("frame.drawMinimap", drawMinimap);
+      perfMeasure("frame.updateDebugStatus", () => updateDebugStatus(now));
+      if (PERF_DEBUG) {
+        const frameElapsed = performance.now() - frameStarted;
+        perfProfiler.frames++;
+        perfProfiler.frameTotal += frameElapsed;
+        perfProfiler.maxFrame = Math.max(perfProfiler.maxFrame, frameElapsed);
+        if (frameElapsed > 16.67) perfProfiler.overBudgetFrames++;
+        perfProfiler.samples.push(Number(frameElapsed.toFixed(3)));
+        if (perfProfiler.samples.length > 600) perfProfiler.samples.shift();
+        if (now - perfProfiler.lastSummaryAt > 2000) {
+          perfProfiler.lastSummaryAt = now;
+          logPerfReport("auto");
+        }
+      }
       requestAnimationFrame(frame);
     }
 

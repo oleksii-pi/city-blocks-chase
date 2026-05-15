@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-17 -11 38 22" role="img" aria-label="Player car">
+  <rect x="-12.5" y="-5" width="29" height="16" fill="#000" opacity=".26"/>
+  <path fill="#f1c343" d="M14.5 0 8.12-8h-12.18l-10.44 3.2v9.6L-4.06 8H8.12Z"/>
+  <rect x="-1.45" y="-5.76" width="7.54" height="11.52" fill="#bfe4ed"/>
+  <rect x="-10.44" y="-9.28" width="5.22" height="2.88" fill="#1e2527"/>
+  <rect x="-10.44" y="6.4" width="5.22" height="2.88" fill="#1e2527"/>
+  <rect x="7.25" y="-9.28" width="5.22" height="2.88" fill="#1e2527"/>
+  <rect x="7.25" y="6.4" width="5.22" height="2.88" fill="#1e2527"/>
+  <rect x="12.5" y="-5.44" width="2" height="3" fill="#fff8b3"/>
+  <rect x="12.5" y="2.56" width="2" height="3" fill="#fff8b3"/>
+  <rect x="13" y="-3.2" width="1.5" height="6.4" fill="#d33a32"/>
+</svg>
